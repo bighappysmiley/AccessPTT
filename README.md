@@ -1,62 +1,59 @@
 # AccessPTT
 
-Secure web console for an **operator** to **speak to, hear, and view** field
-units in real time.
+Secure web console for an **operator** and an **admin** to **message, view, and
+coordinate** field units in real time — built to run **free** ($0/month).
 
-- **Operator setup:** iPad + headset
-- **Unit setup:** 4G PTT Zello radio · earpiece · mini WiFi camera
+- **Operator:** Yitzy · iPad + headset
+- **Admin:** Hillel · admin console
+- **Units:** Shlomo, Ari, Gavriel — each with a 4G PTT Zello radio (voice) and a
+  mini WiFi camera (video)
+
+> **New here? Read [SETUP.md](./SETUP.md)** — it walks through the free/cheap way
+> to connect messaging (Firebase free tier), the cameras, and voice.
 
 ## Features
 
-- **Encrypted passcode lock.** The app opens only after the operator enters the
-  access passcode. The plaintext code is never stored — only a SHA-256 hash is
-  kept, and verification happens locally on the device.
-- **Unit camera wall (right side).** A live tile for every unit's mini WiFi
-  camera, each labelled with the unit's name in the bottom-right corner. Tiles
-  show online/offline state, and an offline unit reads `SIGNAL LOST`.
-- **Push-to-talk.** Hold the big PTT button (or press **Space** with the
-  headset) to transmit. Toggle **Talk to All** to broadcast to every online
-  unit, or tap a single camera to target just that unit. A live mic-level meter
-  shows you're on air.
-- **Glowing green speaking ring.** While transmitting, a pulsing green ring
-  wraps the camera(s) of the unit(s) currently being spoken to, with an
-  on-screen `SPEAKING` badge.
-- **Messaging window.** A chat panel (defaulting to **Hillel**) where the
-  operator can send text messages to the selected unit and read their replies.
+- **Encrypted, role-based sign-in.** Two tabs on the lock screen:
+  **Operator** (Yitzy, `AL1896$bob!`) and **Admin** (Hillel, `ervf37!`). Codes
+  are verified locally against a SHA-256 hash — plaintext is never stored.
+- **Unit camera wall.** A live tile per unit, name in the bottom-right corner,
+  online/offline state. The unit's own device streams its camera **into the app
+  live over WebRTC** (open `/unit.html` on any phone/tablet/webcam — no special
+  hardware, free via Firebase). Also supports HLS / MP4 / WebM / MJPEG stream
+  URLs or an embedded YouTube-Live feed via the in-app **⚙ Camera Settings**
+  panel. Shows a simulated feed until a unit goes live.
+- **Live messaging (Yitzy ⇄ Hillel).** Real-time across devices via the
+  **Firebase free tier**; falls back to same-device delivery until configured.
+- **Push-to-talk + green speaking ring.** Hold the PTT button (or **Space**) to
+  go on air; the targeted unit's camera gets a glowing green ring and a
+  `SPEAKING` badge. Live mic-level meter. (See voice note below.)
+
+## Voice (important)
+
+The radios use the **free Zello app** for walkie-talkie voice. Consumer Zello
+has no public API, so the website can't carry that audio itself — voice runs in
+the Zello app alongside this console. True in-browser radio audio would require
+paid **Zello Work** + an API key (scaffolded in `config.js` for later).
 
 ## Run locally
 
-It's a static site — no build step:
+Static site — no build step:
 
 ```bash
-# any static server works; this one ships with most machines
-python3 -m http.server 8080
-# then open http://localhost:8080
+python3 -m http.server 8080   # then open http://localhost:8080
 ```
 
-> Microphone capture (`getUserMedia`) requires a secure context, so use
-> `http://localhost` (treated as secure) or an HTTPS deployment. Without mic
-> permission the console still works and shows a simulated level meter.
+> Mic capture needs a secure context — use `http://localhost` or an HTTPS
+> deploy. The app still runs without mic permission (simulated meter).
 
 ## Configuration
 
-All site-specific settings live in [`config.js`](./config.js):
-
-- **Units** — name, online state, and each camera's `stream` URL (HLS `.m3u8`,
-  MJPEG or MP4 from the mini WiFi camera). Leave `stream` empty to use the
-  built-in simulated feed.
-- **Operator** — name and device label shown in the top bar.
-- **Default message unit** — which unit the messaging window opens on.
-
-### Rotating the passcode
-
-```bash
-node -e "console.log(require('crypto').createHash('sha256').update('NEW_CODE').digest('hex'))"
-```
-
-Paste the result into `passcodeHash` in `config.js`.
+Everything site-specific is in [`config.js`](./config.js): people, passcode
+hashes, units & camera URLs, Firebase keys, and the voice provider. Step-by-step
+instructions are in [`SETUP.md`](./SETUP.md).
 
 ## Deploy
 
-Configured for **Netlify** (`netlify.toml`) as a zero-build static site served
-over HTTPS — required for camera/mic access. Any static host works equally well.
+Pure static site (`netlify.toml`) on **Netlify** free tier, served over HTTPS
+(required for camera/mic). Messaging talks to Firebase directly from the
+browser, so there's no server to run. Any static host works.

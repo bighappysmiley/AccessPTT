@@ -1,9 +1,11 @@
 /* =========================================================
- * AccessPTT — Operator Console
+ * AccessPTT — Operator / Admin Console
  * ---------------------------------------------------------
- * Lock flow, unit camera grid, push-to-talk transmission
- * (with live mic level), speaking indicator (green ring),
- * and the per-unit messaging window.
+ * Role-based sign-in (Yitzy = operator, Hillel = admin),
+ * unit camera wall with live stream playback, push-to-talk
+ * with mic level + green speaking ring, and live operator⇄
+ * admin messaging backed by Netlify Functions (with a local
+ * fallback so the UI works offline).
  * ======================================================= */
 
 (function () {
@@ -11,19 +13,27 @@
 
   const cfg = window.ACCESSPTT_CONFIG || {};
   const Auth = window.AccessPTTAuth;
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
 
-  /* ----- element refs ----- */
-  const $ = (sel) => document.querySelector(sel);
-  const lockScreen = $('#lock-screen');
-  const dashboard = $('#dashboard');
+  const CAM_KEY = 'accessptt.cameras';   // per-device camera URL overrides
+  const THREAD_ID = 'yitzy-hillel';      // single operator⇄admin conversation
 
-  /* ----- runtime state ----- */
   const state = {
-    units: (cfg.units || []).map((u) => ({ ...u })),
-    selectedUnitId: null,      // unit targeted for messaging + single talk
+    role: null,                 // 'operator' | 'admin'
+    me: null,                   // person object
+    other: null,                // the counterpart person
+    lockRole: 'operator',       // role tab currently selected on lock screen
+    units: [],
+    selectedUnitId: null,
     talkAll: false,
     transmitting: false,
-    messages: {},              // unitId -> [{from, text, ts}]
+    messages: [],
+    lastMsgTs: 0,
+    pollTimer: null,
+    backendOk: true,
+    hlsInstances: {},           // unitId -> Hls instance
+    rtcViewers: {},             // unitId -> live WebRTC viewer handle
     media: { stream: null, ctx: null, analyser: null, raf: null },
   };
 
@@ -36,6 +46,10 @@
     const error = $('#lock-error');
     const toggle = $('#toggle-pass');
     const unlockBtn = $('#unlock-btn');
+
+    $$('.role-tab').forEach((tab) => {
+      tab.addEventListener('click', () => setLockRole(tab.dataset.role));
+    });
 
     toggle.addEventListener('click', () => {
       const showing = input.type === 'text';
@@ -50,14 +64,14 @@
       unlockBtn.disabled = true;
       unlockBtn.textContent = 'Verifying…';
 
-      const ok = await Auth.verify(input.value);
+      const ok = await Auth.verify(state.lockRole, input.value);
       if (ok) {
         input.value = '';
-        showDashboard();
+        enter(state.lockRole);
       } else {
         error.hidden = false;
-        lockScreen.classList.add('shake');
-        setTimeout(() => lockScreen.classList.remove('shake'), 500);
+        $('#lock-screen').classList.add('shake');
+        setTimeout(() => $('#lock-screen').classList.remove('shake'), 500);
         input.select();
       }
       unlockBtn.disabled = false;
@@ -67,51 +81,88 @@
     setTimeout(() => input.focus(), 100);
   }
 
+  function setLockRole(role) {
+    state.lockRole = role;
+    $$('.role-tab').forEach((t) => t.classList.toggle('active', t.dataset.role === role));
+    const isAdmin = role === 'admin';
+    $('#lock-mode-sub').textContent = isAdmin ? 'Admin Console' : 'Operator Console';
+    $('#lock-label').textContent = isAdmin ? 'Admin Passcode' : 'Operator Passcode';
+    $('#lock-error').hidden = true;
+    $('#passcode').focus();
+  }
+
   function showLock() {
     Auth.lock();
+    stopPolling();
     teardownMedia();
-    dashboard.hidden = true;
-    lockScreen.classList.remove('hidden-screen');
-    lockScreen.style.display = '';
+    teardownCameras();
+    state.role = null;
+    $('#dashboard').hidden = true;
+    $('#lock-screen').style.display = '';
     setTimeout(() => $('#passcode').focus(), 100);
   }
 
-  function showDashboard() {
-    lockScreen.style.display = 'none';
-    dashboard.hidden = false;
+  /* =======================================================
+   * ENTER DASHBOARD (role-aware)
+   * ===================================================== */
+  function enter(role) {
+    state.role = role;
+    const people = cfg.people || {};
+    state.me = role === 'admin' ? people.admin : people.operator;
+    state.other = role === 'admin' ? people.operator : people.admin;
+
+    $('#lock-screen').style.display = 'none';
+    $('#dashboard').hidden = false;
+
     initDashboardOnce();
+    applyRole();
   }
 
-  /* =======================================================
-   * DASHBOARD
-   * ===================================================== */
   let dashboardReady = false;
   function initDashboardOnce() {
     if (dashboardReady) return;
     dashboardReady = true;
 
-    // operator identity
-    if (cfg.operator) {
-      $('.op-name').textContent = cfg.operator.name || 'Operator';
-      $('.op-device').textContent = cfg.operator.device || '';
-      $('.op-avatar').textContent = initials(cfg.operator.name || 'OP');
-    }
+    state.units = (cfg.units || []).map((u) => ({ ...u, camera: { ...u.camera } }));
+    applyCameraOverrides();
 
     renderCameras();
-    selectUnit(cfg.defaultMessageUnit || (state.units[0] && state.units[0].id));
+    selectUnit(state.units[0] && state.units[0].id);
     updateOnlineCount();
+    updateZelloPill();
 
     initTalkControls();
     initMessaging();
+    initSettings();
     startClock();
 
     $('#lock-btn').addEventListener('click', showLock);
   }
 
-  /* ----- camera grid ----- */
+  function applyRole() {
+    const me = state.me;
+    $('#me-name').textContent = `${me.name} · ${me.role}`;
+    $('#me-device').textContent = me.device || '';
+    $('#me-avatar').textContent = initials(me.name);
+
+    // messaging window is the conversation with the counterpart person
+    $('#msg-name').textContent = state.other.name;
+    $('#msg-avatar').textContent = initials(state.other.name);
+
+    // (re)start live message sync for this session
+    state.messages = [];
+    state.lastMsgTs = 0;
+    renderMessages();
+    startPolling();
+  }
+
+  /* =======================================================
+   * CAMERA GRID + LIVE PLAYBACK
+   * ===================================================== */
   function renderCameras() {
     const grid = $('#camera-grid');
     grid.innerHTML = '';
+    teardownCameras();
 
     state.units.forEach((unit) => {
       const tile = document.createElement('div');
@@ -121,17 +172,9 @@
       tile.setAttribute('tabindex', '0');
       tile.setAttribute('aria-label', 'Unit ' + unit.name);
 
-      const feed = unit.camera && unit.camera.stream
-        ? `<video class="cam-feed" muted autoplay playsinline loop src="${escapeAttr(unit.camera.stream)}"></video>`
-        : simulatedFeed(unit);
-
       tile.innerHTML = `
         <span class="speak-ring" aria-hidden="true"></span>
-        <div class="cam-surface">
-          ${feed}
-          <div class="cam-scrim"></div>
-          ${unit.online ? '' : '<div class="cam-offline"><span>SIGNAL LOST</span></div>'}
-        </div>
+        <div class="cam-surface"></div>
         <div class="cam-topline">
           <span class="cam-rec"><i></i>LIVE</span>
           <span class="cam-speaking">SPEAKING</span>
@@ -146,11 +189,140 @@
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectUnit(unit.id); }
       });
       grid.appendChild(tile);
+
+      mountFeed(unit, tile.querySelector('.cam-surface'));
     });
   }
 
+  /* Render a single unit's camera into its surface: real stream when a
+   * URL is set, otherwise the simulated placeholder feed. */
+  function mountFeed(unit, surface) {
+    const url = (unit.camera && unit.camera.stream || '').trim();
+    surface.innerHTML = '';
+
+    if (!unit.online) {
+      surface.innerHTML = simScrim() +
+        '<div class="cam-offline"><span>SIGNAL LOST</span></div>';
+      return;
+    }
+
+    // No manual URL: use the live WebRTC feed from the unit's device when
+    // a backend is configured, otherwise fall back to the simulated feed.
+    if (!url) {
+      if (window.AccessPTTRTC && window.AccessPTTRTC.init()) {
+        mountLiveFeed(unit, surface);
+      } else {
+        surface.innerHTML = simulatedFeed(unit) + simScrim();
+      }
+      return;
+    }
+
+    // Embeddable page (e.g. free YouTube Live) → render in a frame.
+    const embed = embedUrl(url);
+    if (embed) {
+      const frame = document.createElement('iframe');
+      frame.className = 'cam-feed cam-frame';
+      frame.src = embed;
+      frame.allow = 'autoplay; encrypted-media; picture-in-picture';
+      frame.setAttribute('allowfullscreen', '');
+      frame.setAttribute('frameborder', '0');
+      surface.appendChild(frame);
+      surface.insertAdjacentHTML('beforeend', simScrim());
+      return;
+    }
+
+    const video = document.createElement('video');
+    video.className = 'cam-feed';
+    video.muted = true;        // operator audio comes via Zello, not the camera
+    video.autoplay = true;
+    video.playsInline = true;
+    video.loop = true;
+    surface.appendChild(video);
+    surface.insertAdjacentHTML('beforeend', simScrim());
+
+    const isHls = /\.m3u8(\?|$)/i.test(url);
+    const onError = () => fallbackToSim(unit, surface);
+
+    if (isHls && !canPlayNativeHls(video) && window.Hls && window.Hls.isSupported()) {
+      const hls = new window.Hls({ lowLatencyMode: true });
+      hls.on(window.Hls.Events.ERROR, (_e, data) => { if (data && data.fatal) onError(); });
+      hls.loadSource(url);
+      hls.attachMedia(video);
+      state.hlsInstances[unit.id] = hls;
+    } else {
+      video.src = url;          // native HLS (Safari/iPad), MP4, WebM, MJPEG
+      video.addEventListener('error', onError);
+    }
+    video.play().catch(() => {/* autoplay may defer until interaction */});
+  }
+
+  /* Subscribe to a unit device's live WebRTC stream. Shows a "waiting"
+   * simulated feed until the unit goes live, then the real video. */
+  function mountLiveFeed(unit, surface) {
+    surface.innerHTML = simulatedFeed(unit) + simScrim() +
+      '<div class="cam-badge" data-live-badge>no camera feed</div>';
+
+    const video = document.createElement('video');
+    video.className = 'cam-feed';
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = false;        // operator should hear the unit
+    video.style.display = 'none';
+    surface.insertBefore(video, surface.firstChild);
+    surface.insertAdjacentHTML('beforeend', simScrim());
+
+    const badge = surface.querySelector('[data-live-badge]');
+    const viewer = window.AccessPTTRTC.view(unit.id, {
+      onTrack(stream) {
+        video.srcObject = stream;
+        video.style.display = '';
+        if (badge) badge.remove();
+        video.play().catch(() => {});
+      },
+      onState(s) {
+        if (s === 'unit-offline') {
+          video.style.display = 'none';
+          if (badge) { badge.style.display = ''; badge.textContent = 'no camera feed'; }
+        } else if (s === 'unit-online' && badge) {
+          badge.textContent = 'connecting…';
+        }
+      },
+    });
+    state.rtcViewers[unit.id] = viewer;
+  }
+
+  function fallbackToSim(unit, surface) {
+    if (state.hlsInstances[unit.id]) {
+      try { state.hlsInstances[unit.id].destroy(); } catch (_) {}
+      delete state.hlsInstances[unit.id];
+    }
+    surface.innerHTML = simulatedFeed(unit) + simScrim() +
+      '<div class="cam-badge">no signal · simulated</div>';
+  }
+
+  function teardownCameras() {
+    Object.values(state.hlsInstances).forEach((h) => { try { h.destroy(); } catch (_) {} });
+    state.hlsInstances = {};
+    Object.values(state.rtcViewers).forEach((v) => { try { v.stop(); } catch (_) {} });
+    state.rtcViewers = {};
+  }
+
+  function canPlayNativeHls(video) {
+    return video.canPlayType('application/vnd.apple.mpegurl') !== '';
+  }
+
+  /* Returns an embeddable iframe URL for page-based feeds (YouTube Live,
+   * or anything the operator explicitly marks with #embed), else null so
+   * the feed is treated as a direct video stream. */
+  function embedUrl(url) {
+    const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|live\/|embed\/)|youtu\.be\/)([\w-]{6,})/i);
+    if (yt) return `https://www.youtube.com/embed/${yt[1]}?autoplay=1&mute=1&playsinline=1`;
+    if (/[?#]embed\b/i.test(url)) return url.replace(/[?#]embed\b/i, '');
+    return null;
+  }
+
+  function simScrim() { return '<div class="cam-scrim"></div>'; }
   function simulatedFeed(unit) {
-    // A lightweight animated stand-in for the unit's mini WiFi camera.
     const seed = hashSeed(unit.id);
     return `<div class="cam-feed sim" style="--seed:${seed}">
               <div class="sim-grid"></div>
@@ -167,36 +339,27 @@
   function selectUnit(unitId) {
     if (!unitId) return;
     state.selectedUnitId = unitId;
-    document.querySelectorAll('.camera-tile').forEach((t) => {
-      t.classList.toggle('selected', t.dataset.unitId === unitId);
-    });
+    $$('.camera-tile').forEach((t) => t.classList.toggle('selected', t.dataset.unitId === unitId));
     updateTargetLine();
-    bindMessageWindow(unitId);
   }
-
   function selectedUnit() {
     return state.units.find((u) => u.id === state.selectedUnitId) || null;
   }
-
   function updateTargetLine() {
     const el = $('#target-value');
-    if (state.talkAll) {
-      el.textContent = 'ALL UNITS';
-      el.classList.add('all');
-    } else {
+    if (state.talkAll) { el.textContent = 'ALL UNITS'; el.classList.add('all'); }
+    else {
       const u = selectedUnit();
       el.textContent = u ? u.name : 'Select a unit';
       el.classList.remove('all');
     }
   }
-
   function updateOnlineCount() {
-    const n = state.units.filter((u) => u.online).length;
-    $('#online-count').textContent = n;
+    $('#online-count').textContent = state.units.filter((u) => u.online).length;
   }
 
   /* =======================================================
-   * TALK CONTROLS (Push-to-Talk)
+   * PUSH-TO-TALK
    * ===================================================== */
   function initTalkControls() {
     const pttBtn = $('#ptt-btn');
@@ -207,7 +370,6 @@
       updateTargetLine();
     });
 
-    // Press & hold (mouse + touch)
     const start = (e) => { e.preventDefault(); startTransmit(); };
     const end = (e) => { e.preventDefault(); stopTransmit(); };
 
@@ -217,18 +379,11 @@
     pttBtn.addEventListener('touchend', end);
     pttBtn.addEventListener('touchcancel', end);
 
-    // Spacebar = hold to talk (operator headset workflow)
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space' && !e.repeat && !isTyping(e.target)) {
-        e.preventDefault();
-        startTransmit();
-      }
+      if (e.code === 'Space' && !e.repeat && !isTyping(e.target)) { e.preventDefault(); startTransmit(); }
     });
     window.addEventListener('keyup', (e) => {
-      if (e.code === 'Space' && state.transmitting && !isTyping(e.target)) {
-        e.preventDefault();
-        stopTransmit();
-      }
+      if (e.code === 'Space' && state.transmitting && !isTyping(e.target)) { e.preventDefault(); stopTransmit(); }
     });
   }
 
@@ -241,10 +396,7 @@
   async function startTransmit() {
     if (state.transmitting) return;
     const targets = targetUnits();
-    if (targets.length === 0) {
-      flashSub(state.talkAll ? 'No units online' : 'Select an online unit');
-      return;
-    }
+    if (targets.length === 0) { flashSub(state.talkAll ? 'No units online' : 'Select an online unit'); return; }
     state.transmitting = true;
 
     const btn = $('#ptt-btn');
@@ -255,45 +407,33 @@
       ? `Transmitting to ${targets.length} units`
       : `Transmitting to ${targets[0].name}`;
 
-    // glowing green ring around target unit(s)
-    targets.forEach((u) => {
-      const tile = tileFor(u.id);
-      if (tile) tile.classList.add('speaking');
-    });
-
+    targets.forEach((u) => { const t = tileFor(u.id); if (t) t.classList.add('speaking'); });
     await startMic();
   }
 
   function stopTransmit() {
     if (!state.transmitting) return;
     state.transmitting = false;
-
     const btn = $('#ptt-btn');
     btn.classList.remove('transmitting');
     btn.setAttribute('aria-pressed', 'false');
     $('.ptt-label').textContent = 'HOLD TO TALK';
     $('#ptt-sub').textContent = 'Press & hold · or Space';
-
-    document.querySelectorAll('.camera-tile.speaking')
-      .forEach((t) => t.classList.remove('speaking'));
-
+    $$('.camera-tile.speaking').forEach((t) => t.classList.remove('speaking'));
     stopMicMeter();
   }
 
   function flashSub(msg) {
     const sub = $('#ptt-sub');
-    const prev = sub.textContent;
-    sub.textContent = msg;
-    sub.classList.add('warn');
+    const prev = 'Press & hold · or Space';
+    sub.textContent = msg; sub.classList.add('warn');
     setTimeout(() => { sub.textContent = prev; sub.classList.remove('warn'); }, 1400);
   }
 
-  /* ----- microphone capture + level meter ----- */
+  /* ----- mic capture + level meter ----- */
   async function startMic() {
     try {
-      if (!state.media.stream) {
-        state.media.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      }
+      if (!state.media.stream) state.media.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (!state.media.ctx) {
         const Ctx = window.AudioContext || window.webkitAudioContext;
         state.media.ctx = new Ctx();
@@ -304,37 +444,29 @@
       }
       if (state.media.ctx.state === 'suspended') await state.media.ctx.resume();
       runMeter();
-    } catch (err) {
-      // Mic permission denied / unavailable — keep the visual transmit state,
-      // just animate a synthetic meter so the operator still gets feedback.
+    } catch (_) {
       runSyntheticMeter();
     }
   }
-
   function runMeter() {
     const analyser = state.media.analyser;
-    const bars = document.querySelectorAll('#level-meter span');
+    const bars = $$('#level-meter span');
     const data = new Uint8Array(analyser.frequencyBinCount);
     const tick = () => {
       if (!state.transmitting) return;
       analyser.getByteFrequencyData(data);
-      paintMeter(bars, data);
+      const step = Math.floor(data.length / bars.length);
+      bars.forEach((bar, i) => {
+        const v = data[i * step] / 255;
+        bar.style.transform = `scaleY(${Math.max(0.08, v)})`;
+        bar.style.opacity = 0.35 + v * 0.65;
+      });
       state.media.raf = requestAnimationFrame(tick);
     };
     tick();
   }
-
-  function paintMeter(bars, data) {
-    const step = Math.floor(data.length / bars.length);
-    bars.forEach((bar, i) => {
-      const v = data[i * step] / 255;
-      bar.style.transform = `scaleY(${Math.max(0.08, v)})`;
-      bar.style.opacity = 0.35 + v * 0.65;
-    });
-  }
-
   function runSyntheticMeter() {
-    const bars = document.querySelectorAll('#level-meter span');
+    const bars = $$('#level-meter span');
     const tick = () => {
       if (!state.transmitting) return;
       bars.forEach((bar) => {
@@ -346,127 +478,224 @@
     };
     tick();
   }
-
   function stopMicMeter() {
     if (state.media.raf) cancelAnimationFrame(state.media.raf);
     state.media.raf = null;
-    document.querySelectorAll('#level-meter span').forEach((bar) => {
-      bar.style.transform = 'scaleY(0.08)';
-      bar.style.opacity = 0.3;
-    });
+    $$('#level-meter span').forEach((bar) => { bar.style.transform = 'scaleY(0.08)'; bar.style.opacity = 0.3; });
   }
-
   function teardownMedia() {
     stopMicMeter();
-    if (state.media.stream) {
-      state.media.stream.getTracks().forEach((t) => t.stop());
-      state.media.stream = null;
-    }
-    if (state.media.ctx) {
-      state.media.ctx.close().catch(() => {});
-      state.media.ctx = null;
-      state.media.analyser = null;
-    }
+    if (state.media.stream) { state.media.stream.getTracks().forEach((t) => t.stop()); state.media.stream = null; }
+    if (state.media.ctx) { state.media.ctx.close().catch(() => {}); state.media.ctx = null; state.media.analyser = null; }
   }
 
   /* =======================================================
-   * MESSAGING WINDOW (per unit, default "Hillel")
+   * MESSAGING (operator ⇄ admin, live via backend)
    * ===================================================== */
   function initMessaging() {
     const form = $('#msg-form');
     const input = $('#msg-text');
-
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const text = input.value.trim();
-      if (!text || !state.selectedUnitId) return;
-      addMessage(state.selectedUnitId, { from: 'operator', text, ts: Date.now() });
+      if (!text) return;
       input.value = '';
-      input.focus();
-      // simulated acknowledgement / reply from the unit
-      simulateReply(state.selectedUnitId);
+      await sendMessage(text);
     });
   }
 
-  function bindMessageWindow(unitId) {
-    const unit = state.units.find((u) => u.id === unitId);
-    if (!unit) return;
-    $('#msg-name').textContent = unit.name;
-    $('#msg-avatar').textContent = initials(unit.name);
-    $('#msg-status').textContent = unit.online ? 'online' : 'offline';
-    $('#msg-status').classList.toggle('offline', !unit.online);
-    renderMessages(unitId);
+  async function sendMessage(text) {
+    const msg = { id: rid(), thread: THREAD_ID, from: state.me.id, fromName: state.me.name, text, ts: Date.now() };
+    // optimistic local render
+    ingest([msg]);
+    if (fb.ready) {
+      try { await fb.send(msg); }
+      catch (_) { setBackend(false); localBus.post(msg); }
+    } else {
+      localBus.post(msg);   // same-device fallback (no backend configured)
+    }
   }
 
-  function addMessage(unitId, msg) {
-    if (!state.messages[unitId]) state.messages[unitId] = [];
-    state.messages[unitId].push(msg);
-    if (unitId === state.selectedUnitId) renderMessages(unitId);
+  /* Start live message sync. Prefers Firebase Realtime Database (free tier);
+   * falls back to a same-device BroadcastChannel when not configured. */
+  function startPolling() {
+    stopPolling();
+    localBus.listen((m) => { if (m.thread === THREAD_ID) ingest([m]); });
+    if (fb.init()) {
+      setBackend(true);
+      fb.subscribe(THREAD_ID, (m) => ingest([m]), () => setBackend(false));
+    } else {
+      setBackend(false);
+    }
+  }
+  function stopPolling() {
+    fb.unsubscribe();
+    localBus.stop();
   }
 
-  function renderMessages(unitId) {
+  /* ----- Firebase Realtime Database adapter ----- */
+  const fb = (function () {
+    let app = null, db = null, ref = null, ready = false;
+    return {
+      get ready() { return ready; },
+      init() {
+        if (ready) return true;
+        const c = cfg.firebase || {};
+        if (!c.databaseURL || !window.firebase) return false;
+        try {
+          app = window.firebase.apps && window.firebase.apps.length
+            ? window.firebase.app()
+            : window.firebase.initializeApp(c);
+          db = window.firebase.database(app);
+          ready = true;
+          return true;
+        } catch (_) { ready = false; return false; }
+      },
+      subscribe(thread, onMsg, onErr) {
+        if (!ready) return;
+        ref = db.ref('threads/' + thread);
+        // last 200 messages, then live updates
+        ref.limitToLast(200).on('child_added',
+          (snap) => { const v = snap.val(); if (v) onMsg(v); },
+          (err) => { if (onErr) onErr(err); });
+      },
+      async send(msg) {
+        if (!ready) throw new Error('firebase not ready');
+        await db.ref('threads/' + msg.thread + '/' + msg.id).set(msg);
+      },
+      unsubscribe() { if (ref) { try { ref.off(); } catch (_) {} ref = null; } },
+    };
+  })();
+
+  function ingest(msgs) {
+    let added = false;
+    msgs.forEach((m) => {
+      if (!m || !m.id) return;
+      if (state.messages.some((x) => x.id === m.id)) return;
+      state.messages.push(m);
+      if (m.ts > state.lastMsgTs) state.lastMsgTs = m.ts;
+      added = true;
+    });
+    if (added) {
+      state.messages.sort((a, b) => a.ts - b.ts);
+      renderMessages();
+    }
+  }
+
+  function renderMessages() {
     const body = $('#msg-body');
-    const msgs = state.messages[unitId] || [];
-    if (msgs.length === 0) {
-      body.innerHTML = `<div class="msg-empty">No messages yet. Send a note to ${escapeHtml(nameOf(unitId))}.</div>`;
+    if (!state.me) return;
+    if (state.messages.length === 0) {
+      body.innerHTML = `<div class="msg-empty">No messages yet. Say hello to ${escapeHtml(state.other.name)}.</div>`;
       return;
     }
-    body.innerHTML = msgs.map((m) => `
-      <div class="bubble ${m.from === 'operator' ? 'out' : 'in'}">
+    body.innerHTML = state.messages.map((m) => `
+      <div class="bubble ${m.from === state.me.id ? 'out' : 'in'}">
         <span class="bubble-text">${escapeHtml(m.text)}</span>
         <span class="bubble-time">${fmtTime(m.ts)}</span>
       </div>`).join('');
     body.scrollTop = body.scrollHeight;
   }
 
-  const replyLines = [
-    'Copy that.', 'Roger.', 'On my way.', 'Understood, standing by.',
-    'In position.', 'All clear here.', 'Affirmative.', 'Received, over.',
-  ];
-  function simulateReply(unitId) {
-    const unit = state.units.find((u) => u.id === unitId);
-    if (!unit || !unit.online) return;
-    setTimeout(() => {
-      const text = replyLines[Math.floor(Math.random() * replyLines.length)];
-      addMessage(unitId, { from: 'unit', text, ts: Date.now() });
-    }, 800 + Math.random() * 1400);
+  function setBackend(ok) {
+    state.backendOk = ok;
+    const s = $('#msg-status');
+    if (ok) { s.textContent = 'online'; s.classList.remove('offline'); }
+    else { s.textContent = 'local only'; s.classList.add('offline'); }
+  }
+
+  /* Same-device message bus (fallback when the backend is unreachable,
+   * e.g. local dev). Uses BroadcastChannel across tabs on one device. */
+  const localBus = (function () {
+    let ch = null, handler = null;
+    return {
+      listen(fn) {
+        handler = fn;
+        try { ch = new BroadcastChannel('accessptt-msg'); ch.onmessage = (e) => handler && handler(e.data); }
+        catch (_) { ch = null; }
+      },
+      post(msg) { try { ch && ch.postMessage(msg); } catch (_) {} },
+      stop() { try { ch && ch.close(); } catch (_) {} ch = null; handler = null; },
+    };
+  })();
+
+  /* =======================================================
+   * CAMERA SETTINGS MODAL
+   * ===================================================== */
+  function initSettings() {
+    const modal = $('#settings-modal');
+    $('#settings-btn').addEventListener('click', openSettings);
+    $('#settings-close').addEventListener('click', () => { modal.hidden = true; });
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.hidden = true; });
+    $('#settings-save').addEventListener('click', saveSettings);
+  }
+
+  function openSettings() {
+    const wrap = $('#settings-fields');
+    wrap.innerHTML = state.units.map((u) => `
+      <label class="modal-field">
+        <span>${escapeHtml(u.name)}</span>
+        <input type="url" data-unit="${u.id}" placeholder="https://… .m3u8 / mjpeg / .mp4"
+               value="${escapeAttr(u.camera.stream || '')}" />
+      </label>`).join('');
+    $('#settings-modal').hidden = false;
+  }
+
+  function saveSettings() {
+    const overrides = {};
+    $$('#settings-fields input[data-unit]').forEach((inp) => {
+      const url = inp.value.trim();
+      overrides[inp.dataset.unit] = url;
+      const unit = state.units.find((u) => u.id === inp.dataset.unit);
+      if (unit) unit.camera.stream = url;
+    });
+    try { localStorage.setItem(CAM_KEY, JSON.stringify(overrides)); } catch (_) {}
+    renderCameras();
+    selectUnit(state.selectedUnitId);
+    $('#settings-modal').hidden = true;
+  }
+
+  function applyCameraOverrides() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(CAM_KEY) || '{}'); } catch (_) {}
+    state.units.forEach((u) => {
+      if (Object.prototype.hasOwnProperty.call(saved, u.id)) u.camera.stream = saved[u.id];
+    });
   }
 
   /* =======================================================
-   * MISC
+   * ZELLO STATUS PILL
+   * ===================================================== */
+  function updateZelloPill() {
+    const v = cfg.voice || {};
+    const dot = $('#zello-dot');
+    const text = $('#zello-text');
+    if (v.provider === 'zello-work') {
+      dot.className = 'dot live';
+      text.textContent = 'Radios linked';
+      $('#zello-pill').title = 'Zello Work API connected.';
+    } else {
+      dot.className = 'dot off';
+      text.textContent = 'Voice: Zello app';
+      $('#zello-pill').title = 'Walkie-talkie voice runs in the free Zello app on the radios, alongside this console. (In-browser radio audio would require paid Zello Work + API key.)';
+    }
+  }
+
+  /* =======================================================
+   * MISC HELPERS
    * ===================================================== */
   function startClock() {
     const el = $('#clock');
-    const tick = () => {
-      el.textContent = new Date().toLocaleTimeString([], { hour12: false });
-    };
-    tick();
-    setInterval(tick, 1000);
+    const tick = () => { el.textContent = new Date().toLocaleTimeString([], { hour12: false }); };
+    tick(); setInterval(tick, 1000);
   }
-
-  /* ----- helpers ----- */
-  function nameOf(unitId) {
-    const u = state.units.find((x) => x.id === unitId);
-    return u ? u.name : 'unit';
-  }
-  function initials(name) {
-    return name.trim().split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase();
-  }
-  function isTyping(el) {
-    return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
-  }
-  function fmtTime(ts) {
-    return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-  function hashSeed(str) {
-    let h = 0;
-    for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 360;
-    return h;
-  }
+  function initials(name) { return name.trim().split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase(); }
+  function isTyping(el) { return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable); }
+  function fmtTime(ts) { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  function rid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function hashSeed(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 360; return h; }
   function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => (
-      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-    ));
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
   function escapeAttr(s) { return escapeHtml(s); }
 
@@ -475,6 +704,7 @@
    * ===================================================== */
   document.addEventListener('DOMContentLoaded', () => {
     initLock();
-    if (Auth.isUnlocked()) showDashboard();
+    const role = Auth.currentRole();
+    if (role) enter(role);
   });
 })();

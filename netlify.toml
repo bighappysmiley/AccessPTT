@@ -1,4 +1,7 @@
-# AccessPTT — static site deploy (no build step required)
+# AccessPTT — Netlify deploy
+# Pure static site, no build step. Messaging uses Firebase (free tier)
+# directly from the browser, so no serverless backend is needed.
+
 [build]
   publish = "."
   command = ""

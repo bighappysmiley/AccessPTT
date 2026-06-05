@@ -1,15 +1,16 @@
 /* =========================================================
  * AccessPTT — Authentication
  * ---------------------------------------------------------
- * The access passcode is verified locally against a stored
- * SHA-256 hash. The plaintext passcode is never persisted
- * and never leaves the device.
+ * Two roles (operator / admin), each gated by an encrypted
+ * passcode. Codes are verified locally against a stored
+ * SHA-256 hash; the plaintext is never persisted and never
+ * leaves the device.
  * ======================================================= */
 
 (function () {
   'use strict';
 
-  const SESSION_KEY = 'accessptt.session';
+  const SESSION_KEY = 'accessptt.session.role';
   const cfg = window.ACCESSPTT_CONFIG || {};
 
   /* Hash arbitrary text with SHA-256 using the Web Crypto API. */
@@ -22,21 +23,26 @@
   }
 
   const Auth = {
-    /* True when the operator has already unlocked this session. */
-    isUnlocked() {
-      return sessionStorage.getItem(SESSION_KEY) === 'true';
+    /* The role unlocked for this session, or null. */
+    currentRole() {
+      const r = sessionStorage.getItem(SESSION_KEY);
+      return r === 'operator' || r === 'admin' ? r : null;
     },
 
-    /* Verify a passcode against the configured hash. */
-    async verify(passcode) {
-      if (!passcode) return false;
+    isUnlocked() {
+      return this.currentRole() !== null;
+    },
+
+    /* Verify a passcode for a given role ('operator' | 'admin'). */
+    async verify(role, passcode) {
+      const roleCfg = (cfg.roles || {})[role];
+      if (!roleCfg || !passcode) return false;
       const hash = await sha256(passcode);
-      const ok = hash === cfg.passcodeHash;
-      if (ok) sessionStorage.setItem(SESSION_KEY, 'true');
+      const ok = hash === roleCfg.hash;
+      if (ok) sessionStorage.setItem(SESSION_KEY, role);
       return ok;
     },
 
-    /* Lock the console for the current session. */
     lock() {
       sessionStorage.removeItem(SESSION_KEY);
     },
