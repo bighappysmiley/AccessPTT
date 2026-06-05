@@ -210,6 +210,20 @@
       return;
     }
 
+    // Embeddable page (e.g. free YouTube Live) → render in a frame.
+    const embed = embedUrl(url);
+    if (embed) {
+      const frame = document.createElement('iframe');
+      frame.className = 'cam-feed cam-frame';
+      frame.src = embed;
+      frame.allow = 'autoplay; encrypted-media; picture-in-picture';
+      frame.setAttribute('allowfullscreen', '');
+      frame.setAttribute('frameborder', '0');
+      surface.appendChild(frame);
+      surface.insertAdjacentHTML('beforeend', simScrim());
+      return;
+    }
+
     const video = document.createElement('video');
     video.className = 'cam-feed';
     video.muted = true;        // operator audio comes via Zello, not the camera
@@ -251,6 +265,16 @@
 
   function canPlayNativeHls(video) {
     return video.canPlayType('application/vnd.apple.mpegurl') !== '';
+  }
+
+  /* Returns an embeddable iframe URL for page-based feeds (YouTube Live,
+   * or anything the operator explicitly marks with #embed), else null so
+   * the feed is treated as a direct video stream. */
+  function embedUrl(url) {
+    const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|live\/|embed\/)|youtu\.be\/)([\w-]{6,})/i);
+    if (yt) return `https://www.youtube.com/embed/${yt[1]}?autoplay=1&mute=1&playsinline=1`;
+    if (/[?#]embed\b/i.test(url)) return url.replace(/[?#]embed\b/i, '');
+    return null;
   }
 
   function simScrim() { return '<div class="cam-scrim"></div>'; }
@@ -440,50 +464,64 @@
     const msg = { id: rid(), thread: THREAD_ID, from: state.me.id, fromName: state.me.name, text, ts: Date.now() };
     // optimistic local render
     ingest([msg]);
-    const ep = (cfg.messaging && cfg.messaging.endpoint) || '';
-    if (ep && state.backendOk) {
-      try {
-        const r = await fetch(ep, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(msg),
-        });
-        if (!r.ok) throw new Error('bad status ' + r.status);
-      } catch (_) {
-        setBackend(false);
-        localBus.post(msg);   // same-device fallback
-      }
+    if (fb.ready) {
+      try { await fb.send(msg); }
+      catch (_) { setBackend(false); localBus.post(msg); }
     } else {
-      localBus.post(msg);
+      localBus.post(msg);   // same-device fallback (no backend configured)
     }
   }
 
+  /* Start live message sync. Prefers Firebase Realtime Database (free tier);
+   * falls back to a same-device BroadcastChannel when not configured. */
   function startPolling() {
     stopPolling();
-    const ep = (cfg.messaging && cfg.messaging.endpoint) || '';
-    const ms = (cfg.messaging && cfg.messaging.pollMs) || 2500;
     localBus.listen((m) => { if (m.thread === THREAD_ID) ingest([m]); });
-    if (!ep) { setBackend(false); return; }
-
-    const poll = async () => {
-      try {
-        const r = await fetch(`${ep}?thread=${encodeURIComponent(THREAD_ID)}&since=${state.lastMsgTs}`);
-        if (!r.ok) throw new Error('bad status ' + r.status);
-        const data = await r.json();
-        if (Array.isArray(data.messages)) ingest(data.messages);
-        setBackend(true);
-      } catch (_) {
-        setBackend(false);
-      }
-    };
-    poll();
-    state.pollTimer = setInterval(poll, ms);
+    if (fb.init()) {
+      setBackend(true);
+      fb.subscribe(THREAD_ID, (m) => ingest([m]), () => setBackend(false));
+    } else {
+      setBackend(false);
+    }
   }
   function stopPolling() {
-    if (state.pollTimer) clearInterval(state.pollTimer);
-    state.pollTimer = null;
+    fb.unsubscribe();
     localBus.stop();
   }
+
+  /* ----- Firebase Realtime Database adapter ----- */
+  const fb = (function () {
+    let app = null, db = null, ref = null, ready = false;
+    return {
+      get ready() { return ready; },
+      init() {
+        if (ready) return true;
+        const c = cfg.firebase || {};
+        if (!c.databaseURL || !window.firebase) return false;
+        try {
+          app = window.firebase.apps && window.firebase.apps.length
+            ? window.firebase.app()
+            : window.firebase.initializeApp(c);
+          db = window.firebase.database(app);
+          ready = true;
+          return true;
+        } catch (_) { ready = false; return false; }
+      },
+      subscribe(thread, onMsg, onErr) {
+        if (!ready) return;
+        ref = db.ref('threads/' + thread);
+        // last 200 messages, then live updates
+        ref.limitToLast(200).on('child_added',
+          (snap) => { const v = snap.val(); if (v) onMsg(v); },
+          (err) => { if (onErr) onErr(err); });
+      },
+      async send(msg) {
+        if (!ready) throw new Error('firebase not ready');
+        await db.ref('threads/' + msg.thread + '/' + msg.id).set(msg);
+      },
+      unsubscribe() { if (ref) { try { ref.off(); } catch (_) {} ref = null; } },
+    };
+  })();
 
   function ingest(msgs) {
     let added = false;
@@ -585,11 +623,18 @@
    * ZELLO STATUS PILL
    * ===================================================== */
   function updateZelloPill() {
-    const z = cfg.zello || {};
+    const v = cfg.voice || {};
     const dot = $('#zello-dot');
     const text = $('#zello-text');
-    if (z.enabled && z.network) { dot.className = 'dot live'; text.textContent = 'Radios linked'; }
-    else { dot.className = 'dot off'; text.textContent = 'Radios: app only'; $('#zello-pill').title = 'Consumer Zello has no browser API — audio runs in the Zello app. Add Zello Work + API key to link radios here.'; }
+    if (v.provider === 'zello-work') {
+      dot.className = 'dot live';
+      text.textContent = 'Radios linked';
+      $('#zello-pill').title = 'Zello Work API connected.';
+    } else {
+      dot.className = 'dot off';
+      text.textContent = 'Voice: Zello app';
+      $('#zello-pill').title = 'Walkie-talkie voice runs in the free Zello app on the radios, alongside this console. (In-browser radio audio would require paid Zello Work + API key.)';
+    }
   }
 
   /* =======================================================

@@ -1,19 +1,10 @@
 # AccessPTT — Netlify deploy
-# Static site + serverless messaging relay (no front-end build step).
+# Pure static site, no build step. Messaging uses Firebase (free tier)
+# directly from the browser, so no serverless backend is needed.
 
 [build]
   publish = "."
   command = ""
-
-[functions]
-  directory = "netlify/functions"
-  node_bundler = "esbuild"
-
-# Friendly API path -> serverless function
-[[redirects]]
-  from = "/api/messages"
-  to = "/.netlify/functions/messages"
-  status = 200
 
 # Camera/mic access (getUserMedia) requires HTTPS — Netlify serves HTTPS by default.
 [[headers]]

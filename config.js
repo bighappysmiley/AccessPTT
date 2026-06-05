@@ -27,43 +27,48 @@ window.ACCESSPTT_CONFIG = {
     admin:    { hash: 'b8cd0c1b4ccba9d179c2d61adab4377157aeb4ebe631554f9e8ab894a142793c' },
   },
 
-  /* Field units. Each carries a 4G PTT Zello radio, an earpiece,
-   * and a mini WiFi camera.
+  /* Field units. Voice runs on the unit's 4G PTT Zello radio (free Zello
+   * app); the website shows each unit's mini WiFi camera feed.
    *
-   * camera.stream: a browser-playable URL from the unit's camera —
-   *   HLS (.m3u8), MJPEG, MP4 or WebM. Leave empty to use the built-in
-   *   simulated feed. Camera URLs can also be set/overridden at runtime
-   *   from the in-app Camera Settings panel (saved per device).
+   * camera.stream: a browser-playable feed URL. Supported:
+   *   - HLS (.m3u8), MP4, WebM, MJPEG  → e.g. the URL produced by a free
+   *     go2rtc / MediaMTX box that bridges your RTSP WiFi cameras.
+   *   - A YouTube Live / embeddable page URL → shown in an embedded frame
+   *     (e.g. a camera pushing to a free unlisted YouTube Live stream).
+   *   Leave empty to use the built-in simulated feed. URLs can also be set
+   *   at runtime from the in-app Camera Settings (⚙) panel (saved per
+   *   device). See SETUP.md for the cheap/free camera options.
    *
-   * NOTE: Most WiFi cameras only expose RTSP, which browsers cannot play
-   *   directly. Such cameras need a small restream (RTSP→HLS/WebRTC)
-   *   gateway; paste that gateway's HLS/WebRTC URL here.            */
+   * NOTE: Remote WiFi cameras only expose RTSP, which no browser can open
+   *   directly — they need a small (free) bridge first. See SETUP.md.    */
   units: [
     { id: 'u-shlomo',   name: 'Shlomo',   camera: { stream: '' }, online: true },
     { id: 'u-ari',      name: 'Ari',      camera: { stream: '' }, online: true },
     { id: 'u-gavriel',  name: 'Gavriel',  camera: { stream: '' }, online: true },
   ],
 
-  /* Messaging backend (Netlify Functions). When reachable, messages
-   * between the operator and admin sync live across devices. If it is
-   * unreachable, the app falls back to same-device delivery so the UI
-   * still works offline / in local dev. */
-  messaging: {
-    endpoint: '/api/messages',
-    pollMs: 2500,
+  /* Messaging backend — Firebase Realtime Database (free "Spark" tier).
+   * When configured, operator (Yitzy) and admin (Hillel) message each other
+   * live across devices for $0. Until you paste your project config below,
+   * the app falls back to same-device delivery so the UI still works.
+   * Setup steps are in SETUP.md. The values below are safe to expose in a
+   * client app (security is enforced by Realtime Database rules). */
+  firebase: {
+    apiKey: '',
+    authDomain: '',
+    databaseURL: '',      // e.g. https://your-project-default-rtdb.firebaseio.com
+    projectId: '',
+    appId: '',
   },
 
-  /* Zello voice.
-   * Consumer Zello has no public API, so a browser cannot bridge audio
-   * to/from the physical radios. Real in-browser voice requires a
-   * "Zello Work" network + a developer API key (Zello Channels API).
-   * When you have those, fill this in and live PTT can be enabled. */
-  zello: {
-    enabled: false,         // set true once Zello Work credentials exist
-    network: '',            // e.g. "yourcompany" (Zello Work network)
-    channel: '',            // channel name to transmit on
-    // The auth token / JWT is issued from the Zello Work developer console
-    // and should be minted by a backend, never hard-coded here.
-    tokenEndpoint: '',      // backend endpoint that returns a Zello JWT
+  /* Voice.
+   * The 4G PTT radios run the free Zello app for walkie-talkie voice.
+   * Consumer Zello has no public API, so the website cannot carry that
+   * audio itself (that needs paid "Zello Work" + an API key). The in-app
+   * push-to-talk therefore drives the on-screen "speaking" indicator and
+   * the operator's local mic level; the actual voice path is the Zello app
+   * running alongside this console. */
+  voice: {
+    provider: 'zello-app',  // 'zello-app' (free) | 'zello-work' (paid API)
   },
 };
