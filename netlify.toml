@@ -1,0 +1,12 @@
+# AccessPTT — static site deploy (no build step required)
+[build]
+  publish = "."
+  command = ""
+
+# Camera/mic access (getUserMedia) requires HTTPS — Netlify serves HTTPS by default.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Referrer-Policy = "no-referrer"
+    X-Content-Type-Options = "nosniff"
+    Permissions-Policy = "microphone=(self), camera=(self)"
