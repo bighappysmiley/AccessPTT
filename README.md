@@ -17,9 +17,11 @@ coordinate** field units in real time — built to run **free** ($0/month).
   **Operator** (Yitzy, `AL1896$bob!`) and **Admin** (Hillel, `ervf37!`). Codes
   are verified locally against a SHA-256 hash — plaintext is never stored.
 - **Unit camera wall.** A live tile per unit, name in the bottom-right corner,
-  online/offline state. Plays HLS / MP4 / WebM / MJPEG streams, or embeds a
-  YouTube-Live feed — set per unit in the in-app **⚙ Camera Settings** panel.
-  Shows a simulated feed until a real URL is added.
+  online/offline state. The unit's own device streams its camera **into the app
+  live over WebRTC** (open `/unit.html` on any phone/tablet/webcam — no special
+  hardware, free via Firebase). Also supports HLS / MP4 / WebM / MJPEG stream
+  URLs or an embedded YouTube-Live feed via the in-app **⚙ Camera Settings**
+  panel. Shows a simulated feed until a unit goes live.
 - **Live messaging (Yitzy ⇄ Hillel).** Real-time across devices via the
   **Firebase free tier**; falls back to same-device delivery until configured.
 - **Push-to-talk + green speaking ring.** Hold the PTT button (or **Space**) to

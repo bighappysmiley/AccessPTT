@@ -48,13 +48,16 @@ Live messaging across two different devices needs a tiny real-time database.
    {
      "rules": {
        "threads": { ".read": true, ".write": true },
-       "$other": { ".read": false, ".write": false }
+       "rooms":   { ".read": true, ".write": true },
+       "$other":  { ".read": false, ".write": false }
      }
    }
    ```
 
-   > This is fine for low-stakes coordination. For stronger security later we
-   > can add Firebase **Anonymous Auth** and restrict by signed-in user.
+   > `threads` carries the chat; `rooms` carries the live-camera connection
+   > handshake (section 3A). This is fine for low-stakes coordination. For
+   > stronger security later we can add Firebase **Anonymous Auth** and
+   > restrict by signed-in user.
 
 Until you fill this in, messaging still works **on the same device** (for
 testing) and shows "local only" next to the name.
@@ -66,11 +69,32 @@ public identifiers; security comes from the database rules above.
 
 ## 3. Cameras — getting your WiFi cams into the app (cheap, then $0/month)
 
-Your units are on 4G, and **no browser can open a remote RTSP WiFi camera
-directly** — it needs a small "translator". Two free options; both end with a
-URL you paste into the in-app **⚙ Camera Settings** panel.
+There are two ways to feed cameras in. **Option A (built in, free, recommended)**
+uses any phone/tablet/webcam at the unit as the camera — no special hardware.
+Options B/C are for standalone IP cameras and end with a URL you paste into the
+in-app **⚙ Camera Settings** panel.
 
-### Option A — go2rtc box (best quality, <1s delay)  ★ recommended
+### Option A — the unit's own device streams into the app  ★ recommended (free)
+The live camera is **built into AccessPTT** over WebRTC, using the Firebase you
+set up in section 2 (so make sure `rooms` is in your database rules).
+
+1. At the unit, take any device with a camera + browser (a cheap/old phone,
+   tablet, or a laptop webcam).
+2. Open **`/unit.html`** on it (e.g. `https://your-site.netlify.app/unit.html`).
+   Tip: open `…/unit.html?u=u-shlomo` to preselect that unit.
+3. Pick the unit name, enter the access passcode (`AL1896$bob!`), tap **Go Live**,
+   and allow camera + microphone.
+4. That unit's tile in the operator/admin dashboard goes live within a second or
+   two. The operator also hears the unit's mic.
+
+Notes:
+- Live video uses **mobile data** (~0.5–1 GB/hour) when on 4G.
+- Connections use free STUN + a free public **TURN** relay so they work across
+  mobile networks (CGNAT). The public TURN has no uptime guarantee — for
+  production, plug your own TURN credentials into `webrtc.js`.
+- Leave the unit page open with the screen on (it requests a wake-lock).
+
+### Option B — go2rtc box (for standalone IP cameras, <1s delay)
 1. Run **[go2rtc](https://github.com/AlexxIT/go2rtc)** (free, open-source) on
    any always-on machine: a **Raspberry Pi (~$40)** or **an old PC/laptop you
    already own ($0)**.
@@ -82,7 +106,7 @@ URL you paste into the in-app **⚙ Camera Settings** panel.
    - To view from outside your network, expose the box with a free tunnel like
      **Cloudflare Tunnel** (free).
 
-### Option B — free YouTube Live (no box, ~15s delay)
+### Option C — free YouTube Live (no box, ~15s delay)
 1. Point the camera (or a small encoder) to push **RTMP** to a free
    **unlisted YouTube Live** stream.
 2. Paste the YouTube link (`https://youtu.be/…` or `…/live/…`) into Camera
@@ -117,5 +141,5 @@ If you ever move to **Zello Work**, set `voice.provider` to `'zello-work'` in
 |---|---|---|
 | Hosting | Netlify free | $0 |
 | Messaging | Firebase Spark (free) | $0 |
-| Cameras | go2rtc on a Pi/old PC, **or** free YouTube Live | $0 (one-time ~$0–40 hardware) |
+| Cameras | unit device via `/unit.html` (built in), or go2rtc, or YouTube Live | $0 (+ mobile data for live video) |
 | Voice | Free Zello app | $0 |

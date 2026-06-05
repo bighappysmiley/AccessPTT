@@ -33,6 +33,7 @@
     pollTimer: null,
     backendOk: true,
     hlsInstances: {},           // unitId -> Hls instance
+    rtcViewers: {},             // unitId -> live WebRTC viewer handle
     media: { stream: null, ctx: null, analyser: null, raf: null },
   };
 
@@ -205,8 +206,14 @@
       return;
     }
 
+    // No manual URL: use the live WebRTC feed from the unit's device when
+    // a backend is configured, otherwise fall back to the simulated feed.
     if (!url) {
-      surface.innerHTML = simulatedFeed(unit) + simScrim();
+      if (window.AccessPTTRTC && window.AccessPTTRTC.init()) {
+        mountLiveFeed(unit, surface);
+      } else {
+        surface.innerHTML = simulatedFeed(unit) + simScrim();
+      }
       return;
     }
 
@@ -249,6 +256,41 @@
     video.play().catch(() => {/* autoplay may defer until interaction */});
   }
 
+  /* Subscribe to a unit device's live WebRTC stream. Shows a "waiting"
+   * simulated feed until the unit goes live, then the real video. */
+  function mountLiveFeed(unit, surface) {
+    surface.innerHTML = simulatedFeed(unit) + simScrim() +
+      '<div class="cam-badge" data-live-badge>waiting for unit…</div>';
+
+    const video = document.createElement('video');
+    video.className = 'cam-feed';
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = false;        // operator should hear the unit
+    video.style.display = 'none';
+    surface.insertBefore(video, surface.firstChild);
+    surface.insertAdjacentHTML('beforeend', simScrim());
+
+    const badge = surface.querySelector('[data-live-badge]');
+    const viewer = window.AccessPTTRTC.view(unit.id, {
+      onTrack(stream) {
+        video.srcObject = stream;
+        video.style.display = '';
+        if (badge) badge.remove();
+        video.play().catch(() => {});
+      },
+      onState(s) {
+        if (s === 'unit-offline') {
+          video.style.display = 'none';
+          if (badge) { badge.style.display = ''; badge.textContent = 'unit offline'; }
+        } else if (s === 'unit-online' && badge) {
+          badge.textContent = 'connecting…';
+        }
+      },
+    });
+    state.rtcViewers[unit.id] = viewer;
+  }
+
   function fallbackToSim(unit, surface) {
     if (state.hlsInstances[unit.id]) {
       try { state.hlsInstances[unit.id].destroy(); } catch (_) {}
@@ -261,6 +303,8 @@
   function teardownCameras() {
     Object.values(state.hlsInstances).forEach((h) => { try { h.destroy(); } catch (_) {} });
     state.hlsInstances = {};
+    Object.values(state.rtcViewers).forEach((v) => { try { v.stop(); } catch (_) {} });
+    state.rtcViewers = {};
   }
 
   function canPlayNativeHls(video) {

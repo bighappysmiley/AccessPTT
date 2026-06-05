@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0b0f14" />
+  <title>AccessPTT · Unit Camera</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .unit-wrap { position: fixed; inset: 0; display: flex; flex-direction: column; }
+    .unit-video { flex: 1; width: 100%; object-fit: cover; background: #05080b; }
+    .unit-bar {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+      background: linear-gradient(0deg, var(--bg-2), rgba(15,21,28,.85));
+      border-top: 1px solid var(--line);
+    }
+    .unit-id { display: flex; align-items: center; gap: 10px; }
+    .unit-id .cam-online-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .unit-id b { font-size: 16px; }
+    .unit-id small { display: block; color: var(--muted); font-size: 11px; }
+    .unit-setup {
+      position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 24px;
+      background: radial-gradient(900px 600px at 50% 0%, #15212e 0%, var(--bg) 60%);
+    }
+    .unit-card {
+      width: min(380px, 92vw); text-align: center;
+      background: linear-gradient(180deg, var(--panel), var(--bg-2));
+      border: 1px solid var(--line); border-radius: 20px; padding: 28px 24px;
+      box-shadow: var(--shadow);
+    }
+    .unit-card h1 { font-size: 22px; margin-bottom: 4px; }
+    .unit-card h1 span { color: var(--green); }
+    .unit-card p.sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+    .unit-card select, .unit-card input {
+      width: 100%; background: var(--bg); border: 1px solid var(--line);
+      border-radius: 12px; color: var(--text); font-size: 16px; padding: 14px; outline: none;
+      margin-bottom: 12px;
+    }
+    .unit-card select:focus, .unit-card input:focus { border-color: var(--green-dim); }
+    .unit-err { color: var(--red); font-size: 13px; min-height: 18px; margin: 4px 0 0; }
+    .unit-status { font-size: 12px; color: var(--muted); letter-spacing: .5px; }
+    .stop-btn {
+      background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+      border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer;
+    }
+    .stop-btn:hover { color: var(--red); border-color: var(--red); }
+  </style>
+</head>
+<body>
+  <div class="unit-wrap">
+    <video id="preview" class="unit-video" autoplay muted playsinline></video>
+    <div class="unit-bar">
+      <div class="unit-id">
+        <span class="cam-online-dot" id="live-dot" style="background:var(--muted-2)"></span>
+        <div><b id="bar-name">Unit</b><small id="bar-status">starting…</small></div>
+      </div>
+      <button id="stop-btn" class="stop-btn">Stop</button>
+    </div>
+
+    <!-- setup / sign-in overlay -->
+    <div class="unit-setup" id="setup">
+      <div class="unit-card">
+        <h1>Access<span>PTT</span> · Unit</h1>
+        <p class="sub">Stream this device's camera to the operator.</p>
+        <select id="unit-select" aria-label="Which unit"></select>
+        <input id="unit-pass" type="password" inputmode="text" placeholder="Access passcode" aria-label="Passcode" />
+        <button id="start-btn" class="unlock-btn" style="margin-top:6px">Go Live</button>
+        <p class="unit-err" id="setup-err"></p>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="config.js"></script>
+  <script src="auth.js"></script>
+  <script src="webrtc.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      var cfg = window.ACCESSPTT_CONFIG || {};
+      var $ = function (s) { return document.querySelector(s); };
+      var publisher = null, stream = null;
+
+      // populate unit picker, preselect from ?u= if present
+      var sel = $('#unit-select');
+      var params = new URLSearchParams(location.search);
+      var preset = params.get('u');
+      (cfg.units || []).forEach(function (u) {
+        var o = document.createElement('option');
+        o.value = u.id; o.textContent = u.name;
+        if (u.id === preset) o.selected = true;
+        sel.appendChild(o);
+      });
+
+      $('#start-btn').addEventListener('click', goLive);
+      $('#unit-pass').addEventListener('keydown', function (e) { if (e.key === 'Enter') goLive(); });
+      $('#stop-btn').addEventListener('click', stop);
+
+      async function goLive() {
+        var err = $('#setup-err');
+        err.textContent = '';
+        var ok = await window.AccessPTTAuth.verify('operator', $('#unit-pass').value);
+        if (!ok) { err.textContent = 'Incorrect passcode.'; return; }
+
+        var unitId = sel.value;
+        var unit = (cfg.units || []).find(function (u) { return u.id === unitId; });
+
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: true,
+          });
+        } catch (e) {
+          err.textContent = 'Camera/mic permission needed.';
+          return;
+        }
+
+        $('#preview').srcObject = stream;
+        $('#bar-name').textContent = unit ? unit.name : 'Unit';
+        $('#setup').style.display = 'none';
+
+        if (!window.AccessPTTRTC.init()) {
+          setStatus('No backend — add Firebase config', false);
+          return;
+        }
+        publisher = window.AccessPTTRTC.publish(unitId, stream, {
+          onState: function (s) {
+            if (s === 'online') setStatus('LIVE · streaming to operator', true);
+            else if (s === 'no-backend') setStatus('No backend configured', false);
+          },
+        });
+        setStatus('LIVE · streaming to operator', true);
+
+        // keep the screen awake if supported
+        try { if ('wakeLock' in navigator) navigator.wakeLock.request('screen'); } catch (e) {}
+      }
+
+      function setStatus(text, live) {
+        $('#bar-status').textContent = text;
+        $('#live-dot').style.background = live ? 'var(--green)' : 'var(--muted-2)';
+        if (live) $('#live-dot').style.boxShadow = '0 0 8px var(--green)';
+      }
+
+      function stop() {
+        if (publisher) { publisher.stop(); publisher = null; }
+        if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+        location.reload();
+      }
+
+      window.addEventListener('beforeunload', function () { if (publisher) publisher.stop(); });
+    })();
+  </script>
+</body>
+</html>
