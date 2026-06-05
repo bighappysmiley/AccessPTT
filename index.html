@@ -24,28 +24,25 @@
           </svg>
         </div>
         <h1>Access<span>PTT</span></h1>
-        <p class="brand-sub">Secure Operator Console</p>
+        <p class="brand-sub" id="lock-mode-sub">Operator Console</p>
+      </div>
+
+      <div class="role-switch" role="tablist" aria-label="Sign in as">
+        <button type="button" class="role-tab active" data-role="operator" role="tab">Operator</button>
+        <button type="button" class="role-tab" data-role="admin" role="tab">Admin</button>
       </div>
 
       <form id="lock-form" autocomplete="off">
-        <label for="passcode" class="lock-label">Enter Encrypted Passcode</label>
+        <label for="passcode" class="lock-label" id="lock-label">Operator Passcode</label>
         <div class="passcode-row">
-          <input
-            id="passcode"
-            type="password"
-            inputmode="text"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="••••••••"
-            aria-label="Passcode"
-          />
+          <input id="passcode" type="password" inputmode="text" autocomplete="off" spellcheck="false" placeholder="••••••••" aria-label="Passcode" />
           <button type="button" id="toggle-pass" class="toggle-pass" aria-label="Show passcode">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
         </div>
         <button type="submit" id="unlock-btn" class="unlock-btn">Unlock Console</button>
         <p id="lock-error" class="lock-error" role="alert" hidden>Incorrect passcode. Access denied.</p>
-        <p class="lock-hint">AES-secured · Local verification · No plaintext stored</p>
+        <p class="lock-hint">Encrypted · Local verification · No plaintext stored</p>
       </form>
     </div>
   </section>
@@ -57,20 +54,24 @@
         <div class="logo-dot"></div>
         <div class="logo-text">Access<span>PTT</span></div>
         <span class="status-pill"><i class="dot live"></i> Live</span>
+        <span class="status-pill" id="zello-pill" title="Zello radio link status"><i class="dot" id="zello-dot"></i> <span id="zello-text">Radios</span></span>
       </div>
       <div class="topbar-center">
         <div class="op-clock" id="clock">--:--:--</div>
       </div>
       <div class="topbar-right">
         <div class="operator-chip">
-          <div class="op-avatar">OP</div>
+          <div class="op-avatar" id="me-avatar">··</div>
           <div class="op-meta">
-            <span class="op-name">Operator</span>
-            <span class="op-device">iPad · Headset</span>
+            <span class="op-name" id="me-name">—</span>
+            <span class="op-device" id="me-device">—</span>
           </div>
         </div>
-        <button id="lock-btn" class="icon-btn" title="Lock console" aria-label="Lock console">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        <button id="settings-btn" class="icon-btn" title="Camera settings" aria-label="Camera settings">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button id="lock-btn" class="icon-btn" title="Sign out" aria-label="Sign out">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         </button>
       </div>
     </header>
@@ -112,14 +113,14 @@
           </div>
         </div>
 
-        <!-- Messaging window: "Hillel" -->
+        <!-- Messaging window: operator ⇄ admin -->
         <div class="message-window">
           <div class="msg-header">
             <div class="msg-title">
-              <span class="msg-avatar" id="msg-avatar">H</span>
+              <span class="msg-avatar" id="msg-avatar">·</span>
               <div>
-                <span class="msg-name" id="msg-name">Hillel</span>
-                <span class="msg-status" id="msg-status">online</span>
+                <span class="msg-name" id="msg-name">—</span>
+                <span class="msg-status" id="msg-status">connecting…</span>
               </div>
             </div>
             <span class="msg-secure" title="End-to-end secured">
@@ -129,7 +130,7 @@
           </div>
           <div class="msg-body" id="msg-body"></div>
           <form class="msg-input" id="msg-form">
-            <input id="msg-text" type="text" placeholder="Message to unit…" autocomplete="off" />
+            <input id="msg-text" type="text" placeholder="Message…" autocomplete="off" />
             <button type="submit" class="msg-send" aria-label="Send">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
@@ -148,6 +149,30 @@
     </div>
   </main>
 
+  <!-- ===================== CAMERA SETTINGS MODAL ===================== -->
+  <div id="settings-modal" class="modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Camera Feeds</h3>
+        <button id="settings-close" class="icon-btn" aria-label="Close">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p class="modal-note">
+        Paste each unit's <strong>browser-playable</strong> stream URL — HLS
+        (<code>.m3u8</code>), MJPEG, MP4 or WebM. Saved on this device.
+        Leave blank to use the simulated feed. Cameras that only output RTSP
+        need an RTSP→HLS/WebRTC gateway first.
+      </p>
+      <div id="settings-fields" class="modal-fields"><!-- populated by JS --></div>
+      <div class="modal-actions">
+        <button id="settings-save" class="unlock-btn modal-save">Save &amp; Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- hls.js enables HLS playback on browsers without native support -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
   <script src="config.js"></script>
   <script src="auth.js"></script>
   <script src="app.js"></script>
