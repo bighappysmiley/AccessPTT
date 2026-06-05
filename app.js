@@ -34,6 +34,7 @@
     backendOk: true,
     hlsInstances: {},           // unitId -> Hls instance
     rtcViewers: {},             // unitId -> live WebRTC viewer handle
+    blobUrls: {},               // unitId -> object URL for an uploaded MP4
     myStatus: 'online',         // this user's chosen presence
     peerStatus: 'offline',      // counterpart's presence
     presenceRef: null,          // firebase ref watching the counterpart
@@ -131,6 +132,7 @@
     applyCameraOverrides();
 
     renderCameras();
+    hydrateUploadedCameras();
     selectUnit(state.units[0] && state.units[0].id);
     updateOnlineCount();
     updateZelloPill();
@@ -200,10 +202,10 @@
     });
   }
 
-  /* Render a single unit's camera into its surface: real stream when a
-   * URL is set, otherwise the simulated placeholder feed. */
+  /* Render a single unit's camera into its surface. Precedence:
+   * uploaded MP4 (blob) > manual stream URL > live WebRTC > simulated feed. */
   function mountFeed(unit, surface) {
-    const url = (unit.camera && unit.camera.stream || '').trim();
+    const url = state.blobUrls[unit.id] || (unit.camera && unit.camera.stream || '').trim();
     surface.innerHTML = '';
 
     if (!unit.online) {
@@ -311,7 +313,61 @@
     state.hlsInstances = {};
     Object.values(state.rtcViewers).forEach((v) => { try { v.stop(); } catch (_) {} });
     state.rtcViewers = {};
+    Object.values(state.blobUrls).forEach((u) => { try { URL.revokeObjectURL(u); } catch (_) {} });
+    state.blobUrls = {};
   }
+
+  /* Tear down just one unit's live resources (for a targeted re-mount). */
+  function teardownUnit(id) {
+    if (state.hlsInstances[id]) { try { state.hlsInstances[id].destroy(); } catch (_) {} delete state.hlsInstances[id]; }
+    if (state.rtcViewers[id]) { try { state.rtcViewers[id].stop(); } catch (_) {} delete state.rtcViewers[id]; }
+  }
+  function remountUnit(id) {
+    const unit = state.units.find((u) => u.id === id);
+    const tile = tileFor(id);
+    const surface = tile && tile.querySelector('.cam-surface');
+    if (unit && surface) { teardownUnit(id); mountFeed(unit, surface); }
+  }
+
+  /* Load any uploaded MP4s from IndexedDB and play them in their tiles. */
+  async function hydrateUploadedCameras() {
+    for (const unit of state.units) {
+      try {
+        const blob = await camStore.get(unit.id);
+        if (blob) {
+          if (state.blobUrls[unit.id]) URL.revokeObjectURL(state.blobUrls[unit.id]);
+          state.blobUrls[unit.id] = URL.createObjectURL(blob);
+          remountUnit(unit.id);
+        }
+      } catch (_) {}
+    }
+  }
+
+  /* Tiny IndexedDB store for uploaded camera videos (persists across reloads). */
+  const camStore = (function () {
+    const DB = 'accessptt', STORE = 'cameraFiles';
+    function open() {
+      return new Promise((res, rej) => {
+        const r = indexedDB.open(DB, 1);
+        r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains(STORE)) r.result.createObjectStore(STORE); };
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      });
+    }
+    function tx(mode, fn) {
+      return open().then((db) => new Promise((res, rej) => {
+        const t = db.transaction(STORE, mode);
+        const rq = fn(t.objectStore(STORE));
+        t.oncomplete = () => res(rq && rq.result);
+        t.onerror = () => rej(t.error);
+      }));
+    }
+    return {
+      put(id, blob) { return tx('readwrite', (s) => s.put(blob, id)); },
+      get(id) { return tx('readonly', (s) => s.get(id)); },
+      del(id) { return tx('readwrite', (s) => s.delete(id)); },
+    };
+  })();
 
   function canPlayNativeHls(video) {
     return video.canPlayType('application/vnd.apple.mpegurl') !== '';
@@ -696,12 +752,65 @@
   function openSettings() {
     const wrap = $('#settings-fields');
     wrap.innerHTML = state.units.map((u) => `
-      <label class="modal-field">
+      <div class="modal-field">
         <span>${escapeHtml(u.name)}</span>
         <input type="url" data-unit="${u.id}" placeholder="https://… .m3u8 / mjpeg / .mp4"
                value="${escapeAttr(u.camera.stream || '')}" />
-      </label>`).join('');
+        <div class="upload-row">
+          <button type="button" class="up-btn" data-up="${u.id}">Upload MP4…</button>
+          <input type="file" accept="video/*" data-file="${u.id}" hidden />
+          <span class="up-status" data-upstatus="${u.id}"></span>
+        </div>
+      </div>`).join('');
+
+    // wire upload buttons / inputs
+    $$('#settings-fields .up-btn').forEach((btn) => {
+      btn.addEventListener('click', () => $(`#settings-fields input[data-file="${btn.dataset.up}"]`).click());
+    });
+    $$('#settings-fields input[data-file]').forEach((inp) => {
+      inp.addEventListener('change', () => {
+        const file = inp.files && inp.files[0];
+        if (file) handleUpload(inp.dataset.file, file);
+        inp.value = '';
+      });
+    });
+    state.units.forEach((u) => refreshUploadStatus(u.id));
     $('#settings-modal').hidden = false;
+  }
+
+  async function handleUpload(id, file) {
+    try {
+      await camStore.put(id, file);
+      if (state.blobUrls[id]) URL.revokeObjectURL(state.blobUrls[id]);
+      state.blobUrls[id] = URL.createObjectURL(file);
+      remountUnit(id);
+      refreshUploadStatus(id, file.name);
+    } catch (_) { refreshUploadStatus(id, null, 'upload failed'); }
+  }
+
+  async function removeUpload(id) {
+    try { await camStore.del(id); } catch (_) {}
+    if (state.blobUrls[id]) { URL.revokeObjectURL(state.blobUrls[id]); delete state.blobUrls[id]; }
+    remountUnit(id);
+    refreshUploadStatus(id);
+  }
+
+  function refreshUploadStatus(id, name, err) {
+    const el = document.querySelector(`[data-upstatus="${id}"]`);
+    if (!el) return;
+    el.innerHTML = '';
+    if (err) { el.textContent = err; el.className = 'up-status err'; return; }
+    if (state.blobUrls[id]) {
+      el.className = 'up-status on';
+      el.append(`✓ ${name || 'uploaded video'} · `);
+      const rm = document.createElement('button');
+      rm.type = 'button'; rm.className = 'up-remove'; rm.textContent = 'Remove';
+      rm.addEventListener('click', () => removeUpload(id));
+      el.appendChild(rm);
+    } else {
+      el.className = 'up-status';
+      el.textContent = '';
+    }
   }
 
   function saveSettings() {
@@ -714,6 +823,7 @@
     });
     try { localStorage.setItem(CAM_KEY, JSON.stringify(overrides)); } catch (_) {}
     renderCameras();
+    hydrateUploadedCameras();   // uploaded MP4s take precedence over URLs
     selectUnit(state.selectedUnitId);
     $('#settings-modal').hidden = true;
   }
