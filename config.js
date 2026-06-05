@@ -54,11 +54,13 @@ window.ACCESSPTT_CONFIG = {
    * Setup steps are in SETUP.md. The values below are safe to expose in a
    * client app (security is enforced by Realtime Database rules). */
   firebase: {
-    apiKey: '',
-    authDomain: '',
-    databaseURL: '',      // e.g. https://your-project-default-rtdb.firebaseio.com
-    projectId: '',
-    appId: '',
+    apiKey: 'AIzaSyAdaczUdGIF5xOk8kF0cP6htDlHyl-ioZU',
+    authDomain: 'accessptt.firebaseapp.com',
+    databaseURL: 'https://accessptt-default-rtdb.firebaseio.com',
+    projectId: 'accessptt',
+    storageBucket: 'accessptt.firebasestorage.app',
+    messagingSenderId: '1058310718077',
+    appId: '1:1058310718077:web:86edbab412ad14af832714',
   },
 
   /* Voice.
