@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0b0f14" />
+  <title>AccessPTT</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ===================== LOCK SCREEN ===================== -->
+  <section id="lock-screen" class="lock-screen">
+    <div class="lock-card">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <span class="ring"></span>
+          <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </div>
+        <h1>Access<span>PTT</span></h1>
+        <p class="brand-sub">Secure Operator Console</p>
+      </div>
+
+      <form id="lock-form" autocomplete="off">
+        <label for="passcode" class="lock-label">Enter Encrypted Passcode</label>
+        <div class="passcode-row">
+          <input
+            id="passcode"
+            type="password"
+            inputmode="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="••••••••"
+            aria-label="Passcode"
+          />
+          <button type="button" id="toggle-pass" class="toggle-pass" aria-label="Show passcode">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <button type="submit" id="unlock-btn" class="unlock-btn">Unlock Console</button>
+        <p id="lock-error" class="lock-error" role="alert" hidden>Incorrect passcode. Access denied.</p>
+        <p class="lock-hint">AES-secured · Local verification · No plaintext stored</p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ===================== DASHBOARD ===================== -->
+  <main id="dashboard" class="dashboard" hidden>
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="logo-dot"></div>
+        <div class="logo-text">Access<span>PTT</span></div>
+        <span class="status-pill"><i class="dot live"></i> Live</span>
+      </div>
+      <div class="topbar-center">
+        <div class="op-clock" id="clock">--:--:--</div>
+      </div>
+      <div class="topbar-right">
+        <div class="operator-chip">
+          <div class="op-avatar">OP</div>
+          <div class="op-meta">
+            <span class="op-name">Operator</span>
+            <span class="op-device">iPad · Headset</span>
+          </div>
+        </div>
+        <button id="lock-btn" class="icon-btn" title="Lock console" aria-label="Lock console">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <!-- LEFT: talk controls + messaging -->
+      <section class="left-pane">
+        <div class="talk-panel">
+          <div class="talk-header">
+            <h2>Transmit</h2>
+            <label class="all-toggle">
+              <input type="checkbox" id="talk-all" />
+              <span class="all-toggle-track"><span class="all-toggle-thumb"></span></span>
+              <span class="all-toggle-label">Talk to All</span>
+            </label>
+          </div>
+
+          <div class="target-line">
+            <span class="target-label">Target</span>
+            <span class="target-value" id="target-value">Select a unit</span>
+          </div>
+
+          <button id="ptt-btn" class="ptt-btn" aria-pressed="false">
+            <span class="ptt-glow"></span>
+            <span class="ptt-icon">
+              <svg viewBox="0 0 24 24" width="46" height="46" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+              </svg>
+            </span>
+            <span class="ptt-label">HOLD TO TALK</span>
+            <span class="ptt-sub" id="ptt-sub">Press &amp; hold · or Space</span>
+          </button>
+
+          <div class="level-meter" id="level-meter" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+
+        <!-- Messaging window: "Hillel" -->
+        <div class="message-window">
+          <div class="msg-header">
+            <div class="msg-title">
+              <span class="msg-avatar" id="msg-avatar">H</span>
+              <div>
+                <span class="msg-name" id="msg-name">Hillel</span>
+                <span class="msg-status" id="msg-status">online</span>
+              </div>
+            </div>
+            <span class="msg-secure" title="End-to-end secured">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              secure
+            </span>
+          </div>
+          <div class="msg-body" id="msg-body"></div>
+          <form class="msg-input" id="msg-form">
+            <input id="msg-text" type="text" placeholder="Message to unit…" autocomplete="off" />
+            <button type="submit" class="msg-send" aria-label="Send">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- RIGHT: camera grid of units -->
+      <section class="right-pane">
+        <div class="grid-header">
+          <h2>Units</h2>
+          <span class="unit-count"><span id="online-count">0</span> online</span>
+        </div>
+        <div class="camera-grid" id="camera-grid"><!-- populated by JS --></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="auth.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
