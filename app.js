@@ -34,6 +34,9 @@
     backendOk: true,
     hlsInstances: {},           // unitId -> Hls instance
     rtcViewers: {},             // unitId -> live WebRTC viewer handle
+    myStatus: 'online',         // this user's chosen presence
+    peerStatus: 'offline',      // counterpart's presence
+    presenceRef: null,          // firebase ref watching the counterpart
     media: { stream: null, ctx: null, analyser: null, raf: null },
   };
 
@@ -93,6 +96,7 @@
 
   function showLock() {
     Auth.lock();
+    stopPresence();
     stopPolling();
     teardownMedia();
     teardownCameras();
@@ -134,6 +138,7 @@
     initTalkControls();
     initMessaging();
     initSettings();
+    initPresence();
     startClock();
 
     $('#lock-btn').addEventListener('click', showLock);
@@ -154,6 +159,7 @@
     state.lastMsgTs = 0;
     renderMessages();
     startPolling();
+    startPresence();
   }
 
   /* =======================================================
@@ -564,6 +570,20 @@
         await db.ref('threads/' + msg.thread + '/' + msg.id).set(msg);
       },
       unsubscribe() { if (ref) { try { ref.off(); } catch (_) {} ref = null; } },
+
+      /* presence: each person publishes their status at presence/<id> */
+      setPresence(id, status, autoOffline) {
+        if (!ready) return;
+        const r = db.ref('presence/' + id);
+        if (autoOffline) { try { r.onDisconnect().set('offline'); } catch (_) {} }
+        r.set(status).catch(() => {});
+      },
+      watchPresence(id, cb) {
+        if (!ready) return null;
+        const r = db.ref('presence/' + id);
+        r.on('value', (snap) => cb(snap.val() || 'offline'));
+        return r;
+      },
     };
   })();
 
@@ -599,9 +619,20 @@
 
   function setBackend(ok) {
     state.backendOk = ok;
+    renderPeerStatus();
+  }
+
+  /* The message-window header shows the COUNTERPART's chosen presence
+   * (Online / Busy / Offline), or a connection hint when the backend is down. */
+  function renderPeerStatus() {
     const s = $('#msg-status');
-    if (ok) { s.textContent = 'online'; s.classList.remove('offline'); }
-    else { s.textContent = 'local only'; s.classList.add('offline'); }
+    if (!s) return;
+    s.classList.remove('busy', 'offline');
+    if (!state.backendOk) { s.textContent = 'local only'; s.classList.add('offline'); return; }
+    const st = state.peerStatus || 'offline';
+    if (st === 'busy') { s.textContent = 'busy'; s.classList.add('busy'); }
+    else if (st === 'online') { s.textContent = 'online'; }
+    else { s.textContent = 'offline'; s.classList.add('offline'); }
   }
 
   /* Same-device message bus (fallback when the backend is unreachable,
@@ -618,6 +649,38 @@
       stop() { try { ch && ch.close(); } catch (_) {} ch = null; handler = null; },
     };
   })();
+
+  /* =======================================================
+   * PRESENCE (Online / Busy / Offline)
+   * ===================================================== */
+  function initPresence() {
+    const sel = $('#presence-select');
+    sel.addEventListener('change', () => {
+      state.myStatus = sel.value;
+      $('#presence-dot').dataset.status = sel.value;
+      if (fb.ready) fb.setPresence(state.me.id, sel.value, sel.value !== 'offline');
+    });
+  }
+
+  /* Publish my status and watch the counterpart's. Called per sign-in. */
+  function startPresence() {
+    stopPresence();
+    state.myStatus = 'online';
+    const sel = $('#presence-select');
+    if (sel) sel.value = 'online';
+    $('#presence-dot').dataset.status = 'online';
+
+    if (!fb.ready) { state.peerStatus = 'offline'; renderPeerStatus(); return; }
+    fb.setPresence(state.me.id, 'online', true);
+    state.presenceRef = fb.watchPresence(state.other.id, (status) => {
+      state.peerStatus = status;
+      renderPeerStatus();
+    });
+  }
+  function stopPresence() {
+    if (state.presenceRef) { try { state.presenceRef.off(); } catch (_) {} state.presenceRef = null; }
+    if (fb.ready && state.me) fb.setPresence(state.me.id, 'offline', false);
+  }
 
   /* =======================================================
    * CAMERA SETTINGS MODAL

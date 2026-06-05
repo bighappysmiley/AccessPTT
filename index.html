@@ -60,6 +60,14 @@
         <div class="op-clock" id="clock">--:--:--</div>
       </div>
       <div class="topbar-right">
+        <div class="presence" id="presence" title="Set your status">
+          <span class="presence-dot" id="presence-dot" data-status="online"></span>
+          <select id="presence-select" aria-label="My status">
+            <option value="online">Online</option>
+            <option value="busy">Busy</option>
+            <option value="offline">Appear Offline</option>
+          </select>
+        </div>
         <div class="operator-chip">
           <div class="op-avatar" id="me-avatar">··</div>
           <div class="op-meta">

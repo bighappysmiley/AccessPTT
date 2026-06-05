@@ -47,15 +47,17 @@ Live messaging across two different devices needs a tiny real-time database.
    ```json
    {
      "rules": {
-       "threads": { ".read": true, ".write": true },
-       "rooms":   { ".read": true, ".write": true },
-       "$other":  { ".read": false, ".write": false }
+       "threads":  { ".read": true, ".write": true },
+       "rooms":    { ".read": true, ".write": true },
+       "presence": { ".read": true, ".write": true },
+       "$other":   { ".read": false, ".write": false }
      }
    }
    ```
 
    > `threads` carries the chat; `rooms` carries the live-camera connection
-   > handshake (section 3A). This is fine for low-stakes coordination. For
+   > handshake (section 3A); `presence` carries Online/Busy/Offline status.
+   > This is fine for low-stakes coordination. For
    > stronger security later we can add Firebase **Anonymous Auth** and
    > restrict by signed-in user.
 
