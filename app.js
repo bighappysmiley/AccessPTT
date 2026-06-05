@@ -260,7 +260,7 @@
    * simulated feed until the unit goes live, then the real video. */
   function mountLiveFeed(unit, surface) {
     surface.innerHTML = simulatedFeed(unit) + simScrim() +
-      '<div class="cam-badge" data-live-badge>waiting for unit…</div>';
+      '<div class="cam-badge" data-live-badge>no camera feed</div>';
 
     const video = document.createElement('video');
     video.className = 'cam-feed';
@@ -282,7 +282,7 @@
       onState(s) {
         if (s === 'unit-offline') {
           video.style.display = 'none';
-          if (badge) { badge.style.display = ''; badge.textContent = 'unit offline'; }
+          if (badge) { badge.style.display = ''; badge.textContent = 'no camera feed'; }
         } else if (s === 'unit-online' && badge) {
           badge.textContent = 'connecting…';
         }
