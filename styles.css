@@ -604,6 +604,13 @@ h1, h2 { margin: 0; font-weight: 600; letter-spacing: -0.02em; }
   border-radius: 10px; color: var(--red); font-size: 12px; line-height: 1.4;
   word-break: break-word;
 }
+.zello-log {
+  margin: 10px 0 0; padding: 8px 10px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 10px; font-size: 11px; line-height: 1.5; color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-height: 120px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+}
 .modal-actions { margin-top: 22px; }
 .modal-save { margin-top: 0; }
 
