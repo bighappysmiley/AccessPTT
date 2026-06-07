@@ -93,17 +93,31 @@ window.AccessPTTZello = (function () {
       session = new window.ZCC.Session(opts);
 
       session.on('session_connect', () => { connected = true; status('connected'); });
-      session.on('session_fail_connect', (e) => { connected = false; status('error', e); });
+      session.on('session_fail_connect', (e) => { connected = false; status('error', errText(e)); });
       session.on('session_connection_lost', () => { connected = false; status('reconnecting'); });
       session.on('session_disconnect', () => { connected = false; status('disconnected'); });
+      session.on('error', (e) => { status('error', errText(e)); });
       session.on('incoming_voice_will_start', (m) => handlers.onIncoming && handlers.onIncoming(senderName(m), true));
       session.on('incoming_voice_did_stop', (m) => handlers.onIncoming && handlers.onIncoming(senderName(m), false));
 
       status('connecting');
-      session.connect((err) => { if (err) status('error', err); });
+      session.connect((err) => { if (err) status('error', errText(err)); });
     } catch (e) {
-      status('error', e);
+      status('error', errText(e));
     }
+  }
+
+  /* Turn whatever the SDK throws/emits into a short readable string. */
+  function errText(e) {
+    try {
+      if (!e) return 'unknown error';
+      if (typeof e === 'string') return e;
+      if (e.error) return String(e.error);
+      if (e.message) return String(e.message);
+      if (e.code) return 'code ' + e.code;
+      const s = JSON.stringify(e);
+      return s && s !== '{}' ? s : String(e);
+    } catch (_) { return String(e); }
   }
 
   function startTalk() {
