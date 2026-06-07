@@ -89,10 +89,10 @@ window.ACCESSPTT_CONFIG = {
    * token is needed (no password). Do NOT commit a real Zello password to a
    * public repo — fill credentials in your private deployment only. */
   zello: {
-    enabled: false,
+    enabled: true,
     serverUrl: 'wss://zello.io/ws',
-    channel: '',
-    authToken: '',
+    channel: 'Universe Channel',
+    authToken: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJXa002Vm1semFXOXVSR1YyT2pFLnU5ejNDWHJXUndGSlFoNkxMcWJWeFdZU19WS2haRXhseHlGUTBZcGVTU2ciLCJleHAiOjE3ODM0NzYyOTEsImF6cCI6ImRldiJ9.STEyr-ZE_cjdUwxIGec_F7sqyiI2RcJhBIIor62dLaCNKUebJAhcNqBZFIMbyOgM6dXIXL5iGosFyEboiunSlnPPD4wKF3DFkHmfHmX0xY6ZLySRLkelFJqxUPKVHy7d7BeEQ0cLQeHte_9_vvBWCJ9iY_i0uQke3Zj0mGSbkIDrAQMvqTUujF9FKEg6HP07UdYmv9CoPgxN69fxe3kbzGe-HWqKCfaoq_BQmK0ZVhqRFNNUEMUlmBzl9dSky5nWrgwFqmQE1fYnRFHI9vaa0jjLwnL8h7fVxQPOwTspqudRcph3_fouugpwyH_LemozYTjncAfOZFQUzt6FBmNSlA',
     tokenEndpoint: '',
     /* Each console user signs in to Zello with THEIR OWN account.
      * Operator (Yitzy) and Admin (Hillel) are separate Zello accounts;
