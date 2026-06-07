@@ -40,7 +40,12 @@ window.ACCESSPTT_CONFIG = {
    *   device). See SETUP.md for the cheap/free camera options.
    *
    * NOTE: Remote WiFi cameras only expose RTSP, which no browser can open
-   *   directly — they need a small (free) bridge first. See SETUP.md.    */
+   *   directly — they need a small (free) bridge first. See SETUP.md.
+   *
+   * zello: the unit's Zello USERNAME only (no password). The unit's radio
+   *   logs into Zello itself, so the console never needs their password —
+   *   this is used purely to light the right tile's green ring when that
+   *   unit talks on the channel. Leave blank to match by display name.    */
   units: [
     { id: 'u-shlomo',   name: 'Shlomo',   zello: '', camera: { stream: '' }, online: true },
     { id: 'u-ari',      name: 'Ari',      zello: '', camera: { stream: '' }, online: true },
