@@ -42,9 +42,9 @@ window.ACCESSPTT_CONFIG = {
    * NOTE: Remote WiFi cameras only expose RTSP, which no browser can open
    *   directly — they need a small (free) bridge first. See SETUP.md.    */
   units: [
-    { id: 'u-shlomo',   name: 'Shlomo',   camera: { stream: '' }, online: true },
-    { id: 'u-ari',      name: 'Ari',      camera: { stream: '' }, online: true },
-    { id: 'u-gavriel',  name: 'Gavriel',  camera: { stream: '' }, online: true },
+    { id: 'u-shlomo',   name: 'Shlomo',   zello: '', camera: { stream: '' }, online: true },
+    { id: 'u-ari',      name: 'Ari',      zello: '', camera: { stream: '' }, online: true },
+    { id: 'u-gavriel',  name: 'Gavriel',  zello: '', camera: { stream: '' }, online: true },
   ],
 
   /* Messaging backend — Firebase Realtime Database (free "Spark" tier).
@@ -89,7 +89,13 @@ window.ACCESSPTT_CONFIG = {
     channel: '',
     authToken: '',
     tokenEndpoint: '',
-    username: '',
-    password: '',
+    /* Each console user signs in to Zello with THEIR OWN account.
+     * Operator (Yitzy) and Admin (Hillel) are separate Zello accounts;
+     * the console logs in with the one matching whoever signed in.
+     * Leave a password blank for listen-only for that role. */
+    accounts: {
+      operator: { username: '', password: '' },  // Yitzy's Zello account
+      admin:    { username: '', password: '' },   // Hillel's Zello account
+    },
   },
 };

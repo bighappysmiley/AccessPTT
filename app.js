@@ -855,17 +855,23 @@
   function setupZello() {
     const Z = window.AccessPTTZello;
     if (!Z || !Z.available()) { updateZelloPill(); return; }
+    // log in to Zello with the account for whoever signed in (operator/admin)
+    const accounts = (cfg.zello && cfg.zello.accounts) || {};
+    const account = accounts[state.role] || null;
     Z.connect({
       onStatus: (s) => { state.zelloStatus = s; updateZelloPill(); },
       onIncoming: (name, active) => onZelloIncoming(name, active),
-    });
+    }, account);
   }
 
-  /* A unit is transmitting on the channel → light its green ring + pill. */
+  /* A unit is transmitting on the channel → light its green ring + pill.
+   * Match the Zello username to a unit by its `zello` field (or name). */
   function onZelloIncoming(name, active) {
     state.zelloRx = active ? name : null;
     updateZelloPill();
-    const unit = state.units.find((u) => u.name.toLowerCase() === String(name || '').toLowerCase());
+    const key = String(name || '').toLowerCase();
+    const unit = state.units.find((u) =>
+      (u.zello && u.zello.toLowerCase() === key) || u.name.toLowerCase() === key);
     if (unit) { const t = tileFor(unit.id); if (t) t.classList.toggle('speaking', active); }
   }
 

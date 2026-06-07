@@ -137,7 +137,10 @@ the same channel.
    Token** (a long JWT). It's valid for **30 days** — perfect for testing.
 
 ### Configure the app
-In `config.js`, edit the `zello` block:
+Each person has their **own Zello account** — the units (Shlomo, Ari, Gavriel)
+each on their radio, plus **Yitzy** (operator) and **Hillel** (admin). The
+console logs into Zello as **whoever signs in**. In `config.js`, edit the
+`zello` block:
 
 ```js
 zello: {
@@ -145,17 +148,28 @@ zello: {
   serverUrl: 'wss://zello.io/ws',     // consumer Zello
   channel: 'YOUR CHANNEL NAME',
   authToken: 'PASTE_DEVELOPMENT_TOKEN',
-  // To TALK (not just listen), add a Zello account:
-  username: '',   // your Zello username
-  password: '',   // your Zello password
+  accounts: {
+    operator: { username: 'yitzy-zello',  password: '••••' },  // Yitzy's Zello
+    admin:    { username: 'hillel-zello', password: '••••' },  // Hillel's Zello
+  },
 },
 ```
 
-- **Listen-only:** leave `username`/`password` blank — the operator will *hear*
-  the channel. The top-bar pill shows **Zello: listening**.
-- **Talk too:** add a Zello `username`/`password`. Push-to-talk then transmits
-  to the channel, and the pill shows **Zello: ready**. When a unit talks, their
-  camera tile lights up with the green "speaking" ring (matched by name).
+Also set each unit's Zello username in the `units` list so their transmissions
+light the right camera tile:
+
+```js
+units: [
+  { id: 'u-shlomo', name: 'Shlomo', zello: 'shlomo-zello', /* … */ },
+  …
+],
+```
+
+- **Listen-only** for a role: leave that role's `password` blank — the console
+  *hears* the channel. Pill shows **Zello: listening**.
+- **Talk:** with a username + password, push-to-talk transmits **as that
+  person**. Pill shows **Zello: ready**. When a unit talks, their camera tile
+  lights up with the green "speaking" ring (matched by the unit's `zello` name).
 
 ### Important notes
 - **Security:** everything in `config.js` ships to the browser. For listen-only

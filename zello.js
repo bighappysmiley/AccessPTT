@@ -19,6 +19,7 @@ window.AccessPTTZello = (function () {
   let outgoing = null;
   let connected = false;
   let sdkReady = null;
+  let account = null;         // the Zello account this console signed in with
 
   const conf = () => (window.ACCESSPTT_CONFIG || {}).zello || {};
 
@@ -28,9 +29,9 @@ window.AccessPTTZello = (function () {
     return !!(z.enabled && z.channel && (z.authToken || z.tokenEndpoint) && window.ZCC && window.ZCC.Sdk);
   }
 
-  /* Transmitting also requires a Zello account. */
+  /* Transmitting also requires a Zello account (this user's). */
   function canTransmit() {
-    return connected && !!conf().username;
+    return connected && !!(account && account.username);
   }
   function isConnected() { return connected; }
 
@@ -69,22 +70,25 @@ window.AccessPTTZello = (function () {
     } catch (_) { return 'unit'; }
   }
 
-  /* Connect to the channel. handlers: { onStatus(state, extra), onIncoming(name, active) } */
-  async function connect(handlers) {
+  /* Connect to the channel as a specific account.
+   * handlers: { onStatus(state, extra), onIncoming(name, active) }
+   * acct:     { username, password } for the signed-in role (optional). */
+  async function connect(handlers, acct) {
     handlers = handlers || {};
+    const z = conf();
+    account = acct || (z.username ? { username: z.username, password: z.password } : null);
     const status = (s, e) => handlers.onStatus && handlers.onStatus(s, e);
     if (!available()) { status('disabled'); return; }
 
     try {
       await loadSdk();
-      const z = conf();
       const token = await getToken();
       const opts = {
         serverUrl: z.serverUrl || 'wss://zello.io/ws',
         channel: z.channel,
         authToken: token,
       };
-      if (z.username) { opts.username = z.username; opts.password = z.password; }
+      if (account && account.username) { opts.username = account.username; opts.password = account.password; }
 
       session = new window.ZCC.Session(opts);
 
@@ -115,6 +119,7 @@ window.AccessPTTZello = (function () {
     stopTalk();
     if (session) { try { session.disconnect(); } catch (_) {} session = null; }
     connected = false;
+    account = null;
   }
 
   return { available, canTransmit, isConnected, connect, disconnect, startTalk, stopTalk };
