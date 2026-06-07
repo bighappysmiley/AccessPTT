@@ -121,19 +121,52 @@ Until a URL is added, each tile shows a **simulated feed** so the layout works.
 
 ---
 
-## 4. Voice — walkie-talkie audio ($0)
+## 4. Voice — connect the console to Zello (BETA, $0)
 
-The 4G PTT radios run the **free Zello app** for voice. Consumer Zello has **no
-public API**, so the website cannot carry that audio itself (that would require
-paid **Zello Work** + an API key). So:
+The console can connect **directly to a Zello channel from the browser** using
+the Zello **Channels API** — and this works with the **free consumer Zello
+network**. The operator can **hear** the channel, and with a Zello account can
+**push-to-talk** to it. The field units keep using their normal Zello radios on
+the same channel.
 
-- **Voice** = the Zello app on the radios and on the operator's iPad, running
-  alongside this console.
-- The in-app **push-to-talk** button drives the on-screen "speaking" ring and
-  your local mic level for coordination.
+### Get a developer token (free)
+1. Make sure you have a (free) **Zello account** in the Zello app, and create or
+   join a **channel** (note its exact name).
+2. Go to **<https://developers.zello.com>** and log in with your Zello account.
+3. Fill in the developer profile and submit. Copy the **Sample Development
+   Token** (a long JWT). It's valid for **30 days** — perfect for testing.
 
-If you ever move to **Zello Work**, set `voice.provider` to `'zello-work'` in
-`config.js` and we can wire true in-browser PTT via the Zello Channels API.
+### Configure the app
+In `config.js`, edit the `zello` block:
+
+```js
+zello: {
+  enabled: true,
+  serverUrl: 'wss://zello.io/ws',     // consumer Zello
+  channel: 'YOUR CHANNEL NAME',
+  authToken: 'PASTE_DEVELOPMENT_TOKEN',
+  // To TALK (not just listen), add a Zello account:
+  username: '',   // your Zello username
+  password: '',   // your Zello password
+},
+```
+
+- **Listen-only:** leave `username`/`password` blank — the operator will *hear*
+  the channel. The top-bar pill shows **Zello: listening**.
+- **Talk too:** add a Zello `username`/`password`. Push-to-talk then transmits
+  to the channel, and the pill shows **Zello: ready**. When a unit talks, their
+  camera tile lights up with the green "speaking" ring (matched by name).
+
+### Important notes
+- **Security:** everything in `config.js` ships to the browser. For listen-only
+  you only need the token (no password). **Do not commit a real Zello password
+  to a public repo** — add credentials only in your private deployment.
+- **Production tokens:** the dev token expires in 30 days. For a permanent
+  setup, host a tiny backend that signs JWTs with your Zello **issuer + private
+  key** (also from the developer portal) and set `tokenEndpoint` to its URL
+  instead of `authToken`.
+- This is **BETA** and uses the vendored Zello JS SDK in `/vendor/zcc`. Test on
+  a real device with mic permission over HTTPS.
 
 ---
 
@@ -144,4 +177,4 @@ If you ever move to **Zello Work**, set `voice.provider` to `'zello-work'` in
 | Hosting | Netlify free | $0 |
 | Messaging | Firebase Spark (free) | $0 |
 | Cameras | unit device via `/unit.html` (built in), or go2rtc, or YouTube Live | $0 (+ mobile data for live video) |
-| Voice | Free Zello app | $0 |
+| Voice | Zello Channels API on the free consumer network (dev token) | $0 |

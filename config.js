@@ -63,14 +63,33 @@ window.ACCESSPTT_CONFIG = {
     appId: '1:1058310718077:web:86edbab412ad14af832714',
   },
 
-  /* Voice.
-   * The 4G PTT radios run the free Zello app for walkie-talkie voice.
-   * Consumer Zello has no public API, so the website cannot carry that
-   * audio itself (that needs paid "Zello Work" + an API key). The in-app
-   * push-to-talk therefore drives the on-screen "speaking" indicator and
-   * the operator's local mic level; the actual voice path is the Zello app
-   * running alongside this console. */
-  voice: {
-    provider: 'zello-app',  // 'zello-app' (free) | 'zello-work' (paid API)
+  /* Voice — real Zello connection (Zello Channels API, BETA).
+   *
+   * This connects the console directly to a Zello channel from the browser,
+   * so the operator can HEAR the channel and (with credentials) TALK to it.
+   * Works with the FREE consumer Zello network — you just need a developer
+   * token. See SETUP.md §4 for step-by-step setup.
+   *
+   *  - enabled:      turn the integration on.
+   *  - serverUrl:    wss://zello.io/ws for consumer Zello (default).
+   *  - channel:      the exact Zello channel name to join.
+   *  - authToken:    a developer token from https://developers.zello.com
+   *                  (the 30-day "Sample Development Token" is fine to test).
+   *  - tokenEndpoint:optional — a backend URL returning a fresh signed JWT,
+   *                  for production (so the token never expires/leaks).
+   *  - username/password: a Zello account. ONLY needed to TRANSMIT (talk).
+   *                  Leave blank for listen-only (hear the channel).
+   *
+   * SECURITY: anything here ships to the browser. For listen-only, just a
+   * token is needed (no password). Do NOT commit a real Zello password to a
+   * public repo — fill credentials in your private deployment only. */
+  zello: {
+    enabled: false,
+    serverUrl: 'wss://zello.io/ws',
+    channel: '',
+    authToken: '',
+    tokenEndpoint: '',
+    username: '',
+    password: '',
   },
 };

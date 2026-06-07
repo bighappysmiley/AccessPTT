@@ -38,6 +38,8 @@
     myStatus: 'online',         // this user's chosen presence
     peerStatus: 'offline',      // counterpart's presence
     presenceRef: null,          // firebase ref watching the counterpart
+    zelloStatus: 'off',         // off|connecting|connected|reconnecting|error
+    zelloRx: null,              // name of unit currently transmitting to us
     media: { stream: null, ctx: null, analyser: null, raf: null },
   };
 
@@ -101,6 +103,8 @@
     stopPolling();
     teardownMedia();
     teardownCameras();
+    if (window.AccessPTTZello) window.AccessPTTZello.disconnect();
+    state.zelloStatus = 'off'; state.zelloRx = null;
     state.role = null;
     $('#dashboard').hidden = true;
     $('#lock-screen').style.display = '';
@@ -136,6 +140,7 @@
     selectUnit(state.units[0] && state.units[0].id);
     updateOnlineCount();
     updateZelloPill();
+    setupZello();
 
     initTalkControls();
     initMessaging();
@@ -470,12 +475,19 @@
       : `Transmitting to ${targets[0].name}`;
 
     targets.forEach((u) => { const t = tileFor(u.id); if (t) t.classList.add('speaking'); });
+
+    // real Zello transmission when connected with credentials
+    const Z = window.AccessPTTZello;
+    if (Z && Z.canTransmit()) Z.startTalk();
+
     await startMic();
   }
 
   function stopTransmit() {
     if (!state.transmitting) return;
     state.transmitting = false;
+    const Z = window.AccessPTTZello;
+    if (Z) Z.stopTalk();
     const btn = $('#ptt-btn');
     btn.classList.remove('transmitting');
     btn.setAttribute('aria-pressed', 'false');
@@ -839,18 +851,53 @@
   /* =======================================================
    * ZELLO STATUS PILL
    * ===================================================== */
+  /* Connect to Zello (if configured) and reflect status in the pill. */
+  function setupZello() {
+    const Z = window.AccessPTTZello;
+    if (!Z || !Z.available()) { updateZelloPill(); return; }
+    Z.connect({
+      onStatus: (s) => { state.zelloStatus = s; updateZelloPill(); },
+      onIncoming: (name, active) => onZelloIncoming(name, active),
+    });
+  }
+
+  /* A unit is transmitting on the channel → light its green ring + pill. */
+  function onZelloIncoming(name, active) {
+    state.zelloRx = active ? name : null;
+    updateZelloPill();
+    const unit = state.units.find((u) => u.name.toLowerCase() === String(name || '').toLowerCase());
+    if (unit) { const t = tileFor(unit.id); if (t) t.classList.toggle('speaking', active); }
+  }
+
   function updateZelloPill() {
-    const v = cfg.voice || {};
     const dot = $('#zello-dot');
     const text = $('#zello-text');
-    if (v.provider === 'zello-work') {
-      dot.className = 'dot live';
-      text.textContent = 'Radios linked';
-      $('#zello-pill').title = 'Zello Work API connected.';
-    } else {
+    const pill = $('#zello-pill');
+    const Z = window.AccessPTTZello;
+
+    if (!Z || !Z.available()) {
       dot.className = 'dot off';
       text.textContent = 'Voice: Zello app';
-      $('#zello-pill').title = 'Walkie-talkie voice runs in the free Zello app on the radios, alongside this console. (In-browser radio audio would require paid Zello Work + API key.)';
+      pill.title = 'Zello not configured. Add a developer token + channel in config.js (SETUP.md §4) to connect this console to a Zello channel.';
+      return;
+    }
+    if (state.zelloRx) {
+      dot.className = 'dot live'; text.textContent = '▶ ' + state.zelloRx;
+      pill.title = 'Receiving from ' + state.zelloRx; return;
+    }
+    switch (state.zelloStatus) {
+      case 'connected':
+        dot.className = 'dot live';
+        text.textContent = Z.canTransmit() ? 'Zello: ready' : 'Zello: listening';
+        pill.title = Z.canTransmit() ? 'Connected to Zello — push to talk to transmit.' : 'Connected to Zello (listen-only). Add a Zello username/password to transmit.';
+        break;
+      case 'connecting':
+      case 'reconnecting':
+        dot.className = 'dot'; text.textContent = 'Zello: connecting…'; pill.title = 'Connecting to Zello…'; break;
+      case 'error':
+        dot.className = 'dot off'; text.textContent = 'Zello: error'; pill.title = 'Could not connect to Zello. Check the token, channel, and credentials in config.js.'; break;
+      default:
+        dot.className = 'dot off'; text.textContent = 'Zello: offline'; pill.title = 'Zello disconnected.';
     }
   }
 
