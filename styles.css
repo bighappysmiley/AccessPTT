@@ -598,6 +598,12 @@ h1, h2 { margin: 0; font-weight: 600; letter-spacing: -0.02em; }
   transition: background .15s;
 }
 .zello-talk-btn:hover { background: rgba(0,113,227,.14); }
+.zello-error {
+  margin: 12px 0 0; padding: 9px 12px;
+  background: rgba(255,59,48,.08); border: 1px solid rgba(255,59,48,.25);
+  border-radius: 10px; color: var(--red); font-size: 12px; line-height: 1.4;
+  word-break: break-word;
+}
 .modal-actions { margin-top: 22px; }
 .modal-save { margin-top: 0; }
 

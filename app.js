@@ -39,6 +39,7 @@
     peerStatus: 'offline',      // counterpart's presence
     presenceRef: null,          // firebase ref watching the counterpart
     zelloStatus: 'off',         // off|connecting|connected|reconnecting|error
+    zelloError: null,           // last Zello error reason (for display)
     zelloRx: null,              // name of unit currently transmitting to us
     media: { stream: null, ctx: null, analyser: null, raf: null },
   };
@@ -865,7 +866,12 @@
       ? { username: acctCfg.username, password: storedZelloPw(state.role) || acctCfg.password || '' }
       : null;
     Z.connect({
-      onStatus: (s) => { state.zelloStatus = s; updateZelloPill(); },
+      onStatus: (s, extra) => {
+        state.zelloStatus = s;
+        if (s === 'error') { state.zelloError = extra || 'connection failed'; console.error('[Zello]', extra); }
+        else if (s === 'connected') { state.zelloError = null; }
+        updateZelloPill();
+      },
       onIncoming: (name, active) => onZelloIncoming(name, active),
     }, account);
   }
@@ -958,6 +964,14 @@
         dot.className = 'dot off'; text.textContent = 'Zello: error'; pill.title = 'Could not connect to Zello. Check the token, channel, and credentials in config.js.'; break;
       default:
         dot.className = 'dot off'; text.textContent = 'Zello: offline'; pill.title = 'Zello disconnected.';
+    }
+    // surface the real Zello error reason so it's visible (not just console)
+    const errEl = $('#zello-error');
+    if (errEl) {
+      if (state.zelloStatus === 'error' && state.zelloError) {
+        errEl.textContent = 'Zello: ' + state.zelloError;
+        errEl.hidden = false;
+      } else { errEl.hidden = true; }
     }
     updateZelloTalkBtn();
   }
