@@ -146,6 +146,7 @@
     initMessaging();
     initSettings();
     initPresence();
+    initZelloTalk();
     startClock();
 
     $('#lock-btn').addEventListener('click', showLock);
@@ -855,13 +856,65 @@
   function setupZello() {
     const Z = window.AccessPTTZello;
     if (!Z || !Z.available()) { updateZelloPill(); return; }
-    // log in to Zello with the account for whoever signed in (operator/admin)
+    // log in to Zello with the account for whoever signed in (operator/admin).
+    // Password comes from this device's local store first (kept out of the repo),
+    // falling back to any value in config.
     const accounts = (cfg.zello && cfg.zello.accounts) || {};
-    const account = accounts[state.role] || null;
+    const acctCfg = accounts[state.role] || {};
+    const account = acctCfg.username
+      ? { username: acctCfg.username, password: storedZelloPw(state.role) || acctCfg.password || '' }
+      : null;
     Z.connect({
       onStatus: (s) => { state.zelloStatus = s; updateZelloPill(); },
       onIncoming: (name, active) => onZelloIncoming(name, active),
     }, account);
+  }
+
+  /* Per-device Zello password store (never committed / never leaves the device). */
+  const ZPW_KEY = 'accessptt.zello.pw';
+  function zelloPwMap() { try { return JSON.parse(localStorage.getItem(ZPW_KEY) || '{}'); } catch (_) { return {}; } }
+  function storedZelloPw(role) { return zelloPwMap()[role] || ''; }
+  function setStoredZelloPw(role, pw) {
+    const m = zelloPwMap(); m[role] = pw;
+    try { localStorage.setItem(ZPW_KEY, JSON.stringify(m)); } catch (_) {}
+  }
+
+  function initZelloTalk() {
+    $('#zello-talk-btn').addEventListener('click', openZelloModal);
+    $('#zello-close').addEventListener('click', () => { $('#zello-modal').hidden = true; });
+    $('#zello-modal').addEventListener('click', (e) => { if (e.target === $('#zello-modal')) $('#zello-modal').hidden = true; });
+    $('#zello-connect').addEventListener('click', submitZelloPw);
+    $('#zello-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitZelloPw(); });
+  }
+  function openZelloModal() {
+    const accounts = (cfg.zello && cfg.zello.accounts) || {};
+    const acct = accounts[state.role] || {};
+    $('#zello-user').textContent = acct.username || 'your account';
+    $('#zello-msg').hidden = true;
+    $('#zello-pw').value = '';
+    $('#zello-modal').hidden = false;
+    setTimeout(() => $('#zello-pw').focus(), 80);
+  }
+  function submitZelloPw() {
+    const pw = $('#zello-pw').value.trim();
+    if (!pw) { return; }
+    setStoredZelloPw(state.role, pw);
+    $('#zello-pw').value = '';
+    $('#zello-modal').hidden = true;
+    // reconnect as the signed-in user with credentials
+    if (window.AccessPTTZello) window.AccessPTTZello.disconnect();
+    state.zelloStatus = 'connecting'; state.zelloRx = null;
+    updateZelloPill();
+    setupZello();
+  }
+  function updateZelloTalkBtn() {
+    const btn = $('#zello-talk-btn');
+    if (!btn) return;
+    const Z = window.AccessPTTZello;
+    const accounts = (cfg.zello && cfg.zello.accounts) || {};
+    const acct = accounts[state.role] || {};
+    const show = !!(Z && Z.available() && state.zelloStatus === 'connected' && acct.username && !Z.canTransmit());
+    btn.hidden = !show;
   }
 
   /* A unit is transmitting on the channel → light its green ring + pill.
@@ -885,6 +938,7 @@
       dot.className = 'dot off';
       text.textContent = 'Voice: Zello app';
       pill.title = 'Zello not configured. Add a developer token + channel in config.js (SETUP.md §4) to connect this console to a Zello channel.';
+      updateZelloTalkBtn();
       return;
     }
     if (state.zelloRx) {
@@ -905,6 +959,7 @@
       default:
         dot.className = 'dot off'; text.textContent = 'Zello: offline'; pill.title = 'Zello disconnected.';
     }
+    updateZelloTalkBtn();
   }
 
   /* =======================================================

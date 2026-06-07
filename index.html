@@ -119,6 +119,8 @@
             <span></span><span></span><span></span><span></span><span></span>
             <span></span><span></span><span></span><span></span><span></span>
           </div>
+
+          <button id="zello-talk-btn" class="zello-talk-btn" hidden>🎙 Sign in to talk on Zello</button>
         </div>
 
         <!-- Messaging window: operator ⇄ admin -->
@@ -175,6 +177,33 @@
       <div id="settings-fields" class="modal-fields"><!-- populated by JS --></div>
       <div class="modal-actions">
         <button id="settings-save" class="unlock-btn modal-save">Save &amp; Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== ZELLO "SIGN IN TO TALK" MODAL ===================== -->
+  <div id="zello-modal" class="modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>Sign in to talk</h3>
+        <button id="zello-close" class="icon-btn" aria-label="Close">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p class="modal-note">
+        Enter the Zello password for <strong><span id="zello-user">your account</span></strong>
+        to enable push-to-talk. It's stored <strong>only on this device</strong> —
+        never saved in the app's code or sent to our servers.
+      </p>
+      <div class="modal-fields">
+        <label class="modal-field">
+          <span>Zello password</span>
+          <input type="password" id="zello-pw" autocomplete="off" spellcheck="false" placeholder="••••••••" />
+        </label>
+      </div>
+      <p id="zello-msg" class="lock-error" hidden></p>
+      <div class="modal-actions">
+        <button id="zello-connect" class="unlock-btn modal-save">Enable Talking</button>
       </div>
     </div>
   </div>

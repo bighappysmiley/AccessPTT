@@ -588,6 +588,16 @@ h1, h2 { margin: 0; font-weight: 600; letter-spacing: -0.02em; }
   background: none; border: none; cursor: pointer;
   color: var(--red); font-size: 12px; font-weight: 600; padding: 0; text-decoration: underline;
 }
+
+/* "Sign in to talk on Zello" button under the PTT */
+.zello-talk-btn {
+  width: 100%; margin-top: 14px;
+  background: rgba(0,113,227,.08); border: 1px solid rgba(0,113,227,.25);
+  color: var(--blue); font-size: 13px; font-weight: 600;
+  border-radius: 12px; padding: 11px; cursor: pointer;
+  transition: background .15s;
+}
+.zello-talk-btn:hover { background: rgba(0,113,227,.14); }
 .modal-actions { margin-top: 22px; }
 .modal-save { margin-top: 0; }
 
