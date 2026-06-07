@@ -47,9 +47,9 @@ window.ACCESSPTT_CONFIG = {
    *   this is used purely to light the right tile's green ring when that
    *   unit talks on the channel. Leave blank to match by display name.    */
   units: [
-    { id: 'u-shlomo',   name: 'Shlomo',   zello: '', camera: { stream: '' }, online: true },
-    { id: 'u-ari',      name: 'Ari',      zello: '', camera: { stream: '' }, online: true },
-    { id: 'u-gavriel',  name: 'Gavriel',  zello: '', camera: { stream: '' }, online: true },
+    { id: 'u-shlomo',   name: 'Shlomo',   zello: '20shlomo26',  camera: { stream: '' }, online: true },
+    { id: 'u-ari',      name: 'Ari',      zello: '20ari26',     camera: { stream: '' }, online: true },
+    { id: 'u-gavriel',  name: 'Gavriel',  zello: '20gavriel26', camera: { stream: '' }, online: true },
   ],
 
   /* Messaging backend — Firebase Realtime Database (free "Spark" tier).
@@ -99,8 +99,8 @@ window.ACCESSPTT_CONFIG = {
      * the console logs in with the one matching whoever signed in.
      * Leave a password blank for listen-only for that role. */
     accounts: {
-      operator: { username: '', password: '' },  // Yitzy's Zello account
-      admin:    { username: '', password: '' },   // Hillel's Zello account
+      operator: { username: 'IMS Login', password: '' },  // Yitzy's Zello account
+      admin:    { username: 'VisionDev', password: '' },   // Hillel's Zello account
     },
   },
 };
