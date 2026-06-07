@@ -483,7 +483,7 @@
 
     // real Zello transmission when connected with credentials
     const Z = window.AccessPTTZello;
-    if (Z && Z.canTransmit()) Z.startTalk();
+    if (Z && Z.canTransmit()) { const ok = Z.startTalk(); zlog(ok ? '🎤 transmitting…' : '⚠ startTalk failed'); }
 
     await startMic();
   }
@@ -868,15 +868,27 @@
     const account = acctCfg.username
       ? { username: acctCfg.username, password: storedZelloPw(state.role) || acctCfg.password || '' }
       : null;
+    zlog('connecting as ' + (account && account.username ? account.username : 'anonymous') +
+         (account && account.password ? ' (with password)' : ' (no password)'));
     Z.connect({
       onStatus: (s, extra) => {
         state.zelloStatus = s;
         if (s === 'error') { state.zelloError = extra || 'connection failed'; console.error('[Zello]', extra); }
         else if (s === 'connected') { state.zelloError = null; }
+        zlog('status: ' + s + (extra ? ' — ' + extra : ''));
         updateZelloPill();
       },
-      onIncoming: (name, active) => onZelloIncoming(name, active),
+      onIncoming: (name, active) => { zlog((active ? '▶ receiving ' : '◼ stop ') + name); onZelloIncoming(name, active); },
     }, account);
+  }
+
+  /* Small on-screen Zello event log to make remote debugging possible. */
+  function zlog(msg) {
+    const el = $('#zello-log');
+    if (!el) return;
+    el.hidden = false;
+    const t = new Date().toLocaleTimeString([], { hour12: false });
+    el.textContent = (t + '  ' + msg + '\n' + el.textContent).split('\n').slice(0, 8).join('\n');
   }
 
   /* Per-device Zello password store (never committed / never leaves the device). */
