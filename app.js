@@ -919,8 +919,13 @@
     const Z = window.AccessPTTZello;
     const accounts = (cfg.zello && cfg.zello.accounts) || {};
     const acct = accounts[state.role] || {};
-    const show = !!(Z && Z.available() && state.zelloStatus === 'connected' && acct.username && !Z.canTransmit());
+    // Show whenever we have a username but can't transmit yet — including the
+    // error state, since a private channel needs a password just to connect.
+    const show = !!(Z && Z.available() && acct.username && !Z.canTransmit() && state.zelloStatus !== 'connecting');
     btn.hidden = !show;
+    btn.textContent = state.zelloStatus === 'connected'
+      ? '🎙 Sign in to talk on Zello'
+      : '🔑 Sign in to Zello';
   }
 
   /* A unit is transmitting on the channel → light its green ring + pill.
@@ -969,7 +974,11 @@
     const errEl = $('#zello-error');
     if (errEl) {
       if (state.zelloStatus === 'error' && state.zelloError) {
-        errEl.textContent = 'Zello: ' + state.zelloError;
+        let msg = 'Zello: ' + state.zelloError;
+        if (/permission|authoriz|password|denied/i.test(state.zelloError)) {
+          msg += ' — tap “Sign in to Zello” below and enter your Zello password.';
+        }
+        errEl.textContent = msg;
         errEl.hidden = false;
       } else { errEl.hidden = true; }
     }

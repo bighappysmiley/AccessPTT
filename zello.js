@@ -29,9 +29,10 @@ window.AccessPTTZello = (function () {
     return !!(z.enabled && z.channel && (z.authToken || z.tokenEndpoint) && window.ZCC && window.ZCC.Sdk);
   }
 
-  /* Transmitting also requires a Zello account (this user's). */
+  /* Transmitting (and even logging in to a private channel) requires a real
+   * username AND password. */
   function canTransmit() {
-    return connected && !!(account && account.username);
+    return connected && !!(account && account.username && account.password);
   }
   function isConnected() { return connected; }
 
@@ -88,7 +89,12 @@ window.AccessPTTZello = (function () {
         channel: z.channel,
         authToken: token,
       };
-      if (account && account.username) { opts.username = account.username; opts.password = account.password; }
+      // Only send credentials when we actually have a password; otherwise
+      // connect anonymously (listen-only) rather than failing auth.
+      if (account && account.username && account.password) {
+        opts.username = account.username;
+        opts.password = account.password;
+      }
 
       session = new window.ZCC.Session(opts);
 
