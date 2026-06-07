@@ -42,7 +42,8 @@ window.AccessPTTZello = (function () {
     sdkReady = new Promise((resolve, reject) => {
       if (!window.ZCC || !window.ZCC.Sdk) { reject(new Error('Zello SDK not loaded')); return; }
       try {
-        const p = window.ZCC.Sdk.init();
+        // autoResume helps the playback AudioContext start without a tap
+        const p = window.ZCC.Sdk.init({ autoResume: true });
         if (p && typeof p.then === 'function') p.then(resolve).catch(reject);
         else resolve();
       } catch (e) { reject(e); }
@@ -88,6 +89,9 @@ window.AccessPTTZello = (function () {
         serverUrl: z.serverUrl || 'wss://zello.io/ws',
         channel: z.channel,
         authToken: token,
+        // keepalive — without this the SDK sends no pings and the socket
+        // drops after ~1 minute idle
+        clientPing: { intervalMs: 15000, consecutiveMissedPongsThreshold: 4 },
       };
       // Only send credentials when we actually have a password; otherwise
       // connect anonymously (listen-only) rather than failing auth.
@@ -142,5 +146,17 @@ window.AccessPTTZello = (function () {
     account = null;
   }
 
-  return { available, canTransmit, isConnected, connect, disconnect, startTalk, stopTalk };
+  /* iOS keeps the playback AudioContext suspended until a user gesture.
+   * Call this from a tap handler to start incoming audio. */
+  function unlockAudio() {
+    try {
+      const IM = window.ZCC && window.ZCC.IncomingMessage;
+      const p = IM && IM.PersistentPlayer;
+      if (p && p.audioCtx && typeof p.audioCtx.resume === 'function' && p.audioCtx.state === 'suspended') {
+        p.audioCtx.resume().catch(() => {});
+      }
+    } catch (_) {}
+  }
+
+  return { available, canTransmit, isConnected, connect, disconnect, startTalk, stopTalk, unlockAudio };
 })();

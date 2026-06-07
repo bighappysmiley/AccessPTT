@@ -148,6 +148,9 @@
     initSettings();
     initPresence();
     initZelloTalk();
+    // iOS: resume Zello playback audio on any tap
+    ['pointerdown', 'touchend', 'click'].forEach((ev) =>
+      document.addEventListener(ev, () => { if (window.AccessPTTZello) window.AccessPTTZello.unlockAudio(); }, true));
     startClock();
 
     $('#lock-btn').addEventListener('click', showLock);
